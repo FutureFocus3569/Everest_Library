@@ -1,0 +1,114 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Source+Sans+3:wght@300;400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 40 33% 96%;
+    --foreground: 160 30% 12%;
+
+    --card: 40 30% 98%;
+    --card-foreground: 160 30% 12%;
+
+    --popover: 40 30% 98%;
+    --popover-foreground: 160 30% 12%;
+
+    --primary: 160 35% 22%;
+    --primary-foreground: 40 30% 96%;
+
+    --secondary: 38 60% 62%;
+    --secondary-foreground: 160 30% 12%;
+
+    --muted: 40 20% 90%;
+    --muted-foreground: 160 10% 45%;
+
+    --accent: 38 70% 50%;
+    --accent-foreground: 160 30% 12%;
+
+    --destructive: 0 65% 50%;
+    --destructive-foreground: 40 30% 96%;
+
+    --border: 40 20% 85%;
+    --input: 40 20% 85%;
+    --ring: 160 35% 22%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 160 30% 14%;
+    --sidebar-foreground: 40 30% 92%;
+    --sidebar-primary: 38 60% 62%;
+    --sidebar-primary-foreground: 160 30% 12%;
+    --sidebar-accent: 160 25% 20%;
+    --sidebar-accent-foreground: 40 30% 92%;
+    --sidebar-border: 160 20% 22%;
+    --sidebar-ring: 38 60% 62%;
+
+    /* Custom tokens */
+    --gold: 38 70% 50%;
+    --gold-light: 38 60% 72%;
+    --forest: 160 35% 22%;
+    --forest-light: 160 25% 35%;
+    --cream: 40 33% 96%;
+    --cream-dark: 40 20% 90%;
+
+    --font-display: 'Playfair Display', serif;
+    --font-body: 'Source Sans 3', sans-serif;
+
+    --shadow-book: 4px 4px 12px hsl(160 20% 12% / 0.08), 0 1px 3px hsl(160 20% 12% / 0.06);
+    --shadow-book-hover: 6px 6px 20px hsl(160 20% 12% / 0.12), 0 2px 6px hsl(160 20% 12% / 0.08);
+  }
+
+  .dark {
+    --background: 160 30% 8%;
+    --foreground: 40 30% 92%;
+    --card: 160 25% 12%;
+    --card-foreground: 40 30% 92%;
+    --popover: 160 25% 12%;
+    --popover-foreground: 40 30% 92%;
+    --primary: 38 60% 62%;
+    --primary-foreground: 160 30% 8%;
+    --secondary: 160 25% 20%;
+    --secondary-foreground: 40 30% 92%;
+    --muted: 160 20% 16%;
+    --muted-foreground: 40 15% 55%;
+    --accent: 38 70% 50%;
+    --accent-foreground: 160 30% 8%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 40 30% 92%;
+    --border: 160 20% 18%;
+    --input: 160 20% 18%;
+    --ring: 38 60% 62%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-body);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+  }
+  .font-body {
+    font-family: var(--font-body);
+  }
+  .shadow-book {
+    box-shadow: var(--shadow-book);
+  }
+  .shadow-book-hover {
+    box-shadow: var(--shadow-book-hover);
+  }
+}
