@@ -142,9 +142,20 @@ const AddBook = () => {
     }
 
     let cancelled = false;
+
+    const waitForVideoElement = async (): Promise<HTMLVideoElement | null> => {
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        if (cancelled) return null;
+        if (videoRef.current) return videoRef.current;
+        await new Promise((resolve) => window.setTimeout(resolve, 50));
+      }
+      return null;
+    };
+
     const startScanner = async () => {
-      if (!videoRef.current) {
-        setScannerError("Camera preview could not start.");
+      const videoElement = await waitForVideoElement();
+      if (!videoElement) {
+        setScannerError("Camera preview could not start. Please close and reopen scanner.");
         return;
       }
 
@@ -173,7 +184,7 @@ const AddBook = () => {
 
         const controls = await reader.decodeFromVideoDevice(
           preferredDevice.deviceId,
-          videoRef.current,
+          videoElement,
           (result, _error, controlsFromCallback) => {
             if (!result) return;
 
@@ -193,7 +204,18 @@ const AddBook = () => {
       } catch (error) {
         if (!cancelled) {
           const message = error instanceof Error ? error.message : "Unknown camera error";
-          setScannerError(`Could not access camera: ${message}`);
+          const isIosHomeScreenMode =
+            /iPad|iPhone|iPod/.test(navigator.userAgent) &&
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (window.navigator as any).standalone === true;
+
+          if (isIosHomeScreenMode) {
+            setScannerError(
+              "Camera access failed in Home Screen mode. Open the site in Safari and try scanning there.",
+            );
+          } else {
+            setScannerError(`Could not access camera: ${message}`);
+          }
         }
       } finally {
         if (!cancelled) {
