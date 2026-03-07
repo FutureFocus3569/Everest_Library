@@ -54,16 +54,30 @@ const AdminUsers = () => {
       setCurrentUserId(user?.id ?? null);
       setCurrentEmail(user?.email?.toLowerCase() ?? null);
 
-      if (!user?.id) return;
+      if (!user) {
+        setProfileFirstName("");
+        setProfileLastName("");
+        return;
+      }
 
-      const { data: profile } = await supabase
+      const metadataFirstName =
+        typeof user.user_metadata?.first_name === "string" ? user.user_metadata.first_name : "";
+      const metadataLastName =
+        typeof user.user_metadata?.last_name === "string" ? user.user_metadata.last_name : "";
+
+      setProfileFirstName(metadataFirstName);
+      setProfileLastName(metadataLastName);
+
+      const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("first_name, last_name")
         .eq("id", user.id)
         .single();
 
-      setProfileFirstName(profile?.first_name ?? "");
-      setProfileLastName(profile?.last_name ?? "");
+      if (!profileError && profile) {
+        setProfileFirstName(profile.first_name ?? metadataFirstName);
+        setProfileLastName(profile.last_name ?? metadataLastName);
+      }
     };
 
     loadUser();
@@ -377,6 +391,10 @@ const AdminUsers = () => {
           <CardContent>
             <form onSubmit={saveMyProfile} className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="profile-email">Email</Label>
+                  <Input id="profile-email" value={currentEmail ?? ""} readOnly />
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="profile-first-name">First name</Label>
                   <Input

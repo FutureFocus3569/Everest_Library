@@ -14,6 +14,24 @@ import { supabase } from "@/lib/supabase";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { defaultBookTags, uniqueTags } from "@/data/defaultTags";
 
+const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> => {
+  let timeoutId: number | undefined;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = window.setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId !== undefined) {
+      window.clearTimeout(timeoutId);
+    }
+  }
+};
+
 const pickTagsFromSubjects = (subjects: string[]): string[] => {
   const subjectText = subjects.join(" ").toLowerCase();
   const matchedTags: string[] = [];
@@ -374,9 +392,21 @@ const AddBook = () => {
 
     setSaveLoading(true);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    let user: { id: string } | null = null;
+
+    try {
+      const authResponse = await withTimeout(
+        supabase.auth.getUser(),
+        15000,
+        "Request timed out while checking your login. Please try again.",
+      );
+      user = authResponse.data.user;
+    } catch (caughtError) {
+      const message = caughtError instanceof Error ? caughtError.message : "Could not verify login. Please try again.";
+      toast.error(message);
+      setSaveLoading(false);
+      return;
+    }
 
     if (!user) {
       toast.error("Please log in again before adding books.");
@@ -398,30 +428,71 @@ const AddBook = () => {
       cover_url: coverUrl.trim() || null,
     };
 
-    let { data, error } = await supabase
-      .from("books")
-      .insert(bookPayload)
-      .select("id, title, author, isbn, category, tags, copies, description, cover_url, loaned_to, loan_date, added_date")
-      .single();
+    let data: {
+      id: string;
+      title: string;
+      author: string;
+      isbn: string | null;
+      category: string | null;
+      tags?: string[] | null;
+      copies: number | null;
+      description: string | null;
+      cover_url: string | null;
+      loaned_to: string | null;
+      loan_date: string | null;
+      added_date: string | null;
+    } | null = null;
+    let error: { message: string } | null = null;
+
+    try {
+      const insertResult = await withTimeout(
+        supabase
+          .from("books")
+          .insert(bookPayload)
+          .select("id, title, author, isbn, category, tags, copies, description, cover_url, loaned_to, loan_date, added_date")
+          .single(),
+        15000,
+        "Saving timed out. Supabase may be unavailable right now.",
+      );
+
+      data = insertResult.data;
+      error = insertResult.error;
+    } catch (caughtError) {
+      const message = caughtError instanceof Error ? caughtError.message : "Could not save book.";
+      toast.error(message);
+      setSaveLoading(false);
+      return;
+    }
 
     if (error && /tags/i.test(error.message)) {
-      const fallbackInsert = await supabase
-        .from("books")
-        .insert({
-          user_id: user.id,
-          title: title.trim(),
-          author: author.trim(),
-          isbn: isbn.trim() || null,
-          category: "Uncategorized",
-          copies,
-          description: description.trim() || null,
-          cover_url: coverUrl.trim() || null,
-        })
-        .select("id, title, author, isbn, category, copies, description, cover_url, loaned_to, loan_date, added_date")
-        .single();
+      try {
+        const fallbackInsert = await withTimeout(
+          supabase
+            .from("books")
+            .insert({
+              user_id: user.id,
+              title: title.trim(),
+              author: author.trim(),
+              isbn: isbn.trim() || null,
+              category: "Uncategorized",
+              copies,
+              description: description.trim() || null,
+              cover_url: coverUrl.trim() || null,
+            })
+            .select("id, title, author, isbn, category, copies, description, cover_url, loaned_to, loan_date, added_date")
+            .single(),
+          15000,
+          "Saving timed out. Supabase may be unavailable right now.",
+        );
 
-      data = fallbackInsert.data;
-      error = fallbackInsert.error;
+        data = fallbackInsert.data;
+        error = fallbackInsert.error;
+      } catch (caughtError) {
+        const message = caughtError instanceof Error ? caughtError.message : "Could not save book.";
+        toast.error(message);
+        setSaveLoading(false);
+        return;
+      }
     }
 
     if (error || !data) {

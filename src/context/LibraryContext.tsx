@@ -47,10 +47,13 @@ export const LibraryProvider = ({ children }: { children: ReactNode }) => {
       } = await supabase.auth.getUser();
 
       if (!user) {
+        setCurrentUserId(null);
+        setBooks([]);
         return;
       }
 
       setCurrentUserId(user.id);
+      setBooks([]);
 
       const { data: profileData } = await supabase
         .from("profiles")
@@ -81,6 +84,7 @@ export const LibraryProvider = ({ children }: { children: ReactNode }) => {
       }
 
       if (error || !data) {
+        setBooks([]);
         return;
       }
 
@@ -147,6 +151,9 @@ export const LibraryProvider = ({ children }: { children: ReactNode }) => {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         loadBooksForCurrentUser();
+      } else {
+        setCurrentUserId(null);
+        setBooks([]);
       }
     });
 
