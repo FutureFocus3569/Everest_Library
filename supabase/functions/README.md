@@ -24,7 +24,7 @@ supabase secrets set \
 ```bash
 supabase functions deploy invite-user
 supabase functions deploy admin-users
-supabase functions deploy delete-user
+supabase functions deploy delete-user --no-verify-jwt
 ```
 
 After deploy, the app page `/admin/users` can send invites, view users, and delete users. Deleted users can be invited again later using the same email.
