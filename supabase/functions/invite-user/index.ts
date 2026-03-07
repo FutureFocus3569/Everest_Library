@@ -157,6 +157,35 @@ Deno.serve(async (req) => {
     });
 
     if (inviteError) {
+      const inviteErrorMessage = inviteError.message ?? "Invite failed.";
+      const isRateLimited = /rate limit/i.test(inviteErrorMessage);
+
+      if (isRateLimited) {
+        const { data: generatedLinkData, error: generatedLinkError } =
+          await adminClient.auth.admin.generateLink({
+            type: "invite",
+            email: inviteEmail,
+            options: {
+              redirectTo: inviteRedirectUrl,
+            },
+          });
+
+        if (!generatedLinkError && generatedLinkData?.properties?.action_link) {
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              message:
+                "Email provider rate limit reached. Copy and send this secure invite link manually.",
+              actionLink: generatedLinkData.properties.action_link,
+            }),
+            {
+              status: 200,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            },
+          );
+        }
+      }
+
       return new Response(JSON.stringify({ error: inviteError.message }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

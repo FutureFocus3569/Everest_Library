@@ -39,6 +39,7 @@ const AdminUsers = () => {
   const [isSavingRole, setIsSavingRole] = useState<Record<string, boolean>>({});
   const [isDeletingUser, setIsDeletingUser] = useState<Record<string, boolean>>({});
   const [roleDraftByUserId, setRoleDraftByUserId] = useState<Record<string, string>>({});
+  const [manualInviteLink, setManualInviteLink] = useState<string | null>(null);
   const [accessError, setAccessError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -167,6 +168,7 @@ const AdminUsers = () => {
     }
     setMessage(null);
     setError(null);
+    setManualInviteLink(null);
 
     const {
       data: { session },
@@ -217,8 +219,11 @@ const AdminUsers = () => {
       return;
     }
 
-    const payload = await response.json().catch(() => null);
+    const payload = (await response.json().catch(() => null)) as
+      | { message?: string; actionLink?: string }
+      | null;
     setMessage(payload?.message ?? `Invite sent to ${inviteEmail.trim().toLowerCase()}.`);
+    setManualInviteLink(payload?.actionLink ?? null);
     setInviteEmail("");
     if (!resend) {
       setFirstName("");
@@ -434,6 +439,32 @@ const AdminUsers = () => {
 
               {error ? <p className="text-sm text-destructive">{error}</p> : null}
               {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
+              {manualInviteLink ? (
+                <div className="space-y-2 rounded-md border border-border bg-muted/40 p-3">
+                  <p className="text-xs text-muted-foreground">
+                    Manual invite link (share this directly with the user):
+                  </p>
+                  <a
+                    href={manualInviteLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block break-all text-xs text-primary underline"
+                  >
+                    {manualInviteLink}
+                  </a>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(manualInviteLink);
+                      setMessage("Manual invite link copied.");
+                    }}
+                  >
+                    Copy link
+                  </Button>
+                </div>
+              ) : null}
 
               <div className="flex flex-wrap gap-2">
                 <Button type="submit" disabled={isSubmitting || isResending}>
