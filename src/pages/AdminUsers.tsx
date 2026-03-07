@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -28,6 +28,7 @@ const AdminUsers = () => {
   const [currentEmail, setCurrentEmail] = useState<string | null>(null);
   const [profileFirstName, setProfileFirstName] = useState("");
   const [profileLastName, setProfileLastName] = useState("");
+  const [profileAvatarUrl, setProfileAvatarUrl] = useState("");
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [firstName, setFirstName] = useState("");
@@ -44,6 +45,7 @@ const AdminUsers = () => {
   const [accessError, setAccessError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const profilePhotoInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const loadUser = async () => {
@@ -57,6 +59,7 @@ const AdminUsers = () => {
       if (!user) {
         setProfileFirstName("");
         setProfileLastName("");
+        setProfileAvatarUrl("");
         return;
       }
 
@@ -67,16 +70,34 @@ const AdminUsers = () => {
 
       setProfileFirstName(metadataFirstName);
       setProfileLastName(metadataLastName);
+      setProfileAvatarUrl(typeof user.user_metadata?.avatar_url === "string" ? user.user_metadata.avatar_url : "");
 
-      const { data: profile, error: profileError } = await supabase
+      let { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("first_name, last_name")
+        .select("first_name, last_name, avatar_url")
         .eq("id", user.id)
         .single();
+
+      if (profileError && /avatar_url/i.test(profileError.message)) {
+        const fallbackProfile = await supabase
+          .from("profiles")
+          .select("first_name, last_name")
+          .eq("id", user.id)
+          .single();
+
+        profile = fallbackProfile.data
+          ? {
+              ...fallbackProfile.data,
+              avatar_url: null,
+            }
+          : null;
+        profileError = fallbackProfile.error;
+      }
 
       if (!profileError && profile) {
         setProfileFirstName(profile.first_name ?? metadataFirstName);
         setProfileLastName(profile.last_name ?? metadataLastName);
+        setProfileAvatarUrl(profile.avatar_url ?? "");
       }
     };
 
@@ -153,14 +174,31 @@ const AdminUsers = () => {
     setIsSavingProfile(true);
     setError(null);
     setMessage(null);
+    let successMessage = "Your profile has been updated.";
 
-    const { error: updateError } = await supabase
+    let { error: updateError } = await supabase
       .from("profiles")
       .update({
         first_name: profileFirstName.trim() || null,
         last_name: profileLastName.trim() || null,
+        avatar_url: profileAvatarUrl.trim() || null,
       })
       .eq("id", currentUserId);
+
+    if (updateError && /avatar_url/i.test(updateError.message)) {
+      const fallbackUpdate = await supabase
+        .from("profiles")
+        .update({
+          first_name: profileFirstName.trim() || null,
+          last_name: profileLastName.trim() || null,
+        })
+        .eq("id", currentUserId);
+
+      updateError = fallbackUpdate.error;
+      if (!updateError) {
+        successMessage = "Name saved. Run profile avatar SQL setup to enable photo saving.";
+      }
+    }
 
     if (updateError) {
       setError(updateError.message);
@@ -168,11 +206,41 @@ const AdminUsers = () => {
       return;
     }
 
-    setMessage("Your profile name has been updated.");
+    setMessage(successMessage);
     setIsSavingProfile(false);
     if (isAdmin) {
       await loadAccessUsers();
     }
+  };
+
+  const handleProfilePhotoUpload = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setError("Please upload an image file.");
+      return;
+    }
+
+    const maxSizeBytes = 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      setError("Profile photo must be 1MB or smaller.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setProfileAvatarUrl(reader.result);
+        setError(null);
+        setMessage("Photo selected. Click Save my profile.");
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const openProfilePhotoPicker = () => {
+    profilePhotoInputRef.current?.click();
   };
 
   const submitInvite = async (resend = false, linkOnly = false) => {
@@ -390,6 +458,33 @@ const AdminUsers = () => {
           </CardHeader>
           <CardContent>
             <form onSubmit={saveMyProfile} className="space-y-4">
+              <div className="space-y-2">
+                <Label>Profile photo</Label>
+                <div className="flex flex-col items-center gap-2">
+                  <input
+                    ref={profilePhotoInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleProfilePhotoUpload}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={openProfilePhotoPicker}
+                    className="relative h-24 w-24 overflow-hidden rounded-full border border-border bg-muted transition hover:opacity-90"
+                  >
+                    {profileAvatarUrl ? (
+                      <img src={profileAvatarUrl} alt="Profile" className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
+                        Add photo
+                      </div>
+                    )}
+                  </button>
+                  <p className="text-xs text-muted-foreground">Tap photo to change</p>
+                </div>
+              </div>
+
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2 sm:col-span-2">
                   <Label htmlFor="profile-email">Email</Label>
@@ -414,7 +509,7 @@ const AdminUsers = () => {
               </div>
 
               <Button type="submit" disabled={isSavingProfile}>
-                {isSavingProfile ? "Saving..." : "Save my name"}
+                {isSavingProfile ? "Saving..." : "Save my profile"}
               </Button>
 
               <p className="text-sm text-muted-foreground">
