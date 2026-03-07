@@ -7,6 +7,21 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Mountain } from "lucide-react";
 
+const getAuthTypeFromUrl = (): string | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const hash = window.location.hash?.startsWith("#")
+    ? window.location.hash.slice(1)
+    : window.location.hash;
+
+  const hashParams = new URLSearchParams(hash ?? "");
+  const searchParams = new URLSearchParams(window.location.search);
+
+  return hashParams.get("type") ?? searchParams.get("type");
+};
+
 const AuthScreen = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -165,6 +180,9 @@ const PasswordSetupScreen = ({ onComplete }: { onComplete: () => void }) => {
     }
 
     onComplete();
+    if (typeof window !== "undefined") {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
     setIsSubmitting(false);
   };
 
@@ -218,7 +236,7 @@ const PasswordSetupScreen = ({ onComplete }: { onComplete: () => void }) => {
 export const AuthGate = ({ children }: { children: ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isRecoveryMode, setIsRecoveryMode] = useState(false);
+  const [isPasswordSetupMode, setIsPasswordSetupMode] = useState(false);
 
   useEffect(() => {
     if (!hasSupabaseEnv) {
@@ -229,9 +247,9 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
     const fetchSession = async () => {
       const { data } = await supabase.auth.getSession();
       setSession(data.session);
-      const href = typeof window !== "undefined" ? window.location.href : "";
-      if (href.includes("type=recovery")) {
-        setIsRecoveryMode(true);
+      const authType = getAuthTypeFromUrl();
+      if (authType === "recovery" || authType === "invite") {
+        setIsPasswordSetupMode(true);
       }
       setIsLoading(false);
     };
@@ -243,7 +261,12 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
     } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
       if (event === "PASSWORD_RECOVERY") {
-        setIsRecoveryMode(true);
+        setIsPasswordSetupMode(true);
+      }
+
+      const authType = getAuthTypeFromUrl();
+      if (authType === "invite") {
+        setIsPasswordSetupMode(true);
       }
     });
 
@@ -275,8 +298,8 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
     return <AuthScreen />;
   }
 
-  if (isRecoveryMode) {
-    return <PasswordSetupScreen onComplete={() => setIsRecoveryMode(false)} />;
+  if (isPasswordSetupMode) {
+    return <PasswordSetupScreen onComplete={() => setIsPasswordSetupMode(false)} />;
   }
 
   return <>{children}</>;
