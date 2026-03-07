@@ -90,9 +90,90 @@ const AuthScreen = () => {
   );
 };
 
+const PasswordSetupScreen = ({ onComplete }: { onComplete: () => void }) => {
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError(null);
+
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    const { error: updateError } = await supabase.auth.updateUser({ password });
+
+    if (updateError) {
+      setError(updateError.message);
+      setIsSubmitting(false);
+      return;
+    }
+
+    onComplete();
+    setIsSubmitting(false);
+  };
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <Card className="w-full max-w-md">
+        <CardHeader>
+          <CardTitle>Create your password</CardTitle>
+          <CardDescription>
+            Set a password for your account so you can log in anytime.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-password">New password</Label>
+              <Input
+                id="new-password"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+                minLength={6}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="confirm-password">Confirm password</Label>
+              <Input
+                id="confirm-password"
+                type="password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                required
+                minLength={6}
+              />
+            </div>
+
+            {error ? <p className="text-sm text-destructive">{error}</p> : null}
+
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? "Saving..." : "Save password"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
 export const AuthGate = ({ children }: { children: ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRecoveryMode, setIsRecoveryMode] = useState(false);
 
   useEffect(() => {
     if (!hasSupabaseEnv) {
@@ -103,6 +184,10 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
     const fetchSession = async () => {
       const { data } = await supabase.auth.getSession();
       setSession(data.session);
+      const href = typeof window !== "undefined" ? window.location.href : "";
+      if (href.includes("type=recovery")) {
+        setIsRecoveryMode(true);
+      }
       setIsLoading(false);
     };
 
@@ -110,8 +195,11 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
+      if (event === "PASSWORD_RECOVERY") {
+        setIsRecoveryMode(true);
+      }
     });
 
     return () => {
@@ -140,6 +228,10 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
 
   if (!session) {
     return <AuthScreen />;
+  }
+
+  if (isRecoveryMode) {
+    return <PasswordSetupScreen onComplete={() => setIsRecoveryMode(false)} />;
   }
 
   return <>{children}</>;

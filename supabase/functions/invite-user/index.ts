@@ -106,78 +106,66 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-
-  if (resend) {
-    const { data: listData, error: listError } = await adminClient.auth.admin.listUsers({
-      page: 1,
-      perPage: 1000,
-    });
-
-    if (listError) {
-      return new Response(JSON.stringify({ error: listError.message }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const existingUser = listData.users.find((u) => u.email?.toLowerCase() === inviteEmail);
-
-    if (!existingUser?.email) {
-      return new Response(JSON.stringify({ error: "No user found with this email" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const linkType = existingUser.email_confirmed_at ? "magiclink" : "invite";
-
-    const { error: linkError } = await adminClient.auth.admin.generateLink({
-      type: linkType,
-      email: inviteEmail,
-      options: {
-        redirectTo: inviteRedirectUrl,
-      },
-    });
-
-    if (linkError) {
-      return new Response(JSON.stringify({ error: linkError.message }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    return new Response(
-      JSON.stringify({
-        ok: true,
-        message:
-          linkType === "invite"
-            ? `Invite resent to ${inviteEmail}.`
-            : `Sign-in link sent to ${inviteEmail}.`,
-      }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
-    );
-  }
-
-  const { error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(inviteEmail, {
-    redirectTo: inviteRedirectUrl,
-    data: {
-      first_name: firstName,
-      last_name: lastName,
-    },
+  const { data: listData, error: listError } = await adminClient.auth.admin.listUsers({
+    page: 1,
+    perPage: 1000,
   });
 
-  if (inviteError) {
-    return new Response(JSON.stringify({ error: inviteError.message }), {
+  if (listError) {
+    return new Response(JSON.stringify({ error: listError.message }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
-  return new Response(JSON.stringify({ ok: true, message: `Invite sent to ${inviteEmail}.` }), {
+  const existingUser = listData.users.find((u) => u.email?.toLowerCase() === inviteEmail);
+
+  if (resend && !existingUser?.id) {
+    return new Response(JSON.stringify({ error: "No user found with this email" }), {
+      status: 404,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  if (!existingUser?.id) {
+    const { error: createUserError } = await adminClient.auth.admin.createUser({
+      email: inviteEmail,
+      email_confirm: true,
+      user_metadata: {
+        first_name: firstName,
+        last_name: lastName,
+      },
+    });
+
+    if (createUserError) {
+      return new Response(JSON.stringify({ error: createUserError.message }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+  }
+
+  const { error: resetError } = await adminClient.auth.resetPasswordForEmail(inviteEmail, {
+    redirectTo: inviteRedirectUrl,
+  });
+
+  if (resetError) {
+    return new Response(JSON.stringify({ error: resetError.message }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  return new Response(
+    JSON.stringify({
+      ok: true,
+      message: resend
+        ? `Password setup email resent to ${inviteEmail}.`
+        : `User created. Password setup email sent to ${inviteEmail}.`,
+    }),
+    {
     status: 200,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+    },
+  );
 });
