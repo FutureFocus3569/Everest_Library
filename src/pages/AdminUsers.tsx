@@ -283,13 +283,41 @@ const AdminUsers = () => {
     setIsDeletingUser((prev) => ({ ...prev, [user.id]: true }));
 
     try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        setError("Your session expired. Please sign out and log in again.");
+        return;
+      }
+
       const { data, error: invokeError } = await supabase.functions.invoke("delete-user", {
         body: { userId: user.id, email: user.email },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
       });
 
       if (invokeError) {
-        const detailedMessage =
+        let detailedMessage =
           (invokeError as { message?: string }).message || "Delete failed. Please try again.";
+
+        const invokeErrorWithContext = invokeError as {
+          context?: { json?: () => Promise<{ error?: string }> };
+        };
+
+        if (invokeErrorWithContext.context?.json) {
+          try {
+            const payload = await invokeErrorWithContext.context.json();
+            if (payload?.error) {
+              detailedMessage = payload.error;
+            }
+          } catch {
+            // Ignore parse errors and keep fallback message.
+          }
+        }
+
         setError(detailedMessage);
         return;
       }
