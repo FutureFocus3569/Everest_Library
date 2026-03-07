@@ -34,6 +34,7 @@ const AdminUsers = () => {
   const [lastName, setLastName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResending, setIsResending] = useState(false);
+  const [isGeneratingLink, setIsGeneratingLink] = useState(false);
   const [accessUsers, setAccessUsers] = useState<AccessUser[]>([]);
   const [isLoadingAccess, setIsLoadingAccess] = useState(false);
   const [isSavingRole, setIsSavingRole] = useState<Record<string, boolean>>({});
@@ -160,9 +161,11 @@ const AdminUsers = () => {
     }
   };
 
-  const submitInvite = async (resend = false) => {
+  const submitInvite = async (resend = false, linkOnly = false) => {
     if (resend) {
       setIsResending(true);
+    } else if (linkOnly) {
+      setIsGeneratingLink(true);
     } else {
       setIsSubmitting(true);
     }
@@ -178,6 +181,7 @@ const AdminUsers = () => {
       setError("Your session expired. Please sign out and log in again.");
       setIsSubmitting(false);
       setIsResending(false);
+      setIsGeneratingLink(false);
       return;
     }
 
@@ -195,6 +199,7 @@ const AdminUsers = () => {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         resend,
+        linkOnly,
       }),
     });
 
@@ -216,6 +221,7 @@ const AdminUsers = () => {
       setError(detailedError);
       setIsSubmitting(false);
       setIsResending(false);
+      setIsGeneratingLink(false);
       return;
     }
 
@@ -231,6 +237,7 @@ const AdminUsers = () => {
     }
     setIsSubmitting(false);
     setIsResending(false);
+    setIsGeneratingLink(false);
   };
 
   const handleInvite = async (event: FormEvent<HTMLFormElement>) => {
@@ -240,6 +247,10 @@ const AdminUsers = () => {
 
   const handleResend = async () => {
     await submitInvite(true);
+  };
+
+  const handleGenerateLink = async () => {
+    await submitInvite(true, true);
   };
 
   const updateRole = async (userId: string) => {
@@ -474,9 +485,17 @@ const AdminUsers = () => {
                   type="button"
                   variant="outline"
                   onClick={handleResend}
-                  disabled={isSubmitting || isResending || !inviteEmail.trim()}
+                  disabled={isSubmitting || isResending || isGeneratingLink || !inviteEmail.trim()}
                 >
                   {isResending ? "Resending..." : "Resend invite"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleGenerateLink}
+                  disabled={isSubmitting || isResending || isGeneratingLink || !inviteEmail.trim()}
+                >
+                  {isGeneratingLink ? "Generating..." : "Generate setup link"}
                 </Button>
               </div>
             </form>

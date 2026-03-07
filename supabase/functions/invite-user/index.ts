@@ -83,11 +83,13 @@ Deno.serve(async (req) => {
       firstName?: string;
       lastName?: string;
       resend?: boolean;
+      linkOnly?: boolean;
     };
     const inviteEmail = payload.email?.trim().toLowerCase();
     const firstName = payload.firstName?.trim();
     const lastName = payload.lastName?.trim();
     const resend = Boolean(payload.resend);
+    const linkOnly = Boolean(payload.linkOnly);
 
     if (!inviteEmail || !inviteEmail.includes("@")) {
       return new Response(JSON.stringify({ error: "Email is required" }), {
@@ -126,6 +128,38 @@ Deno.serve(async (req) => {
       }
 
       const linkType = existingUser.email_confirmed_at ? "recovery" : "invite";
+
+      if (linkOnly) {
+        const { data: manualLinkData, error: manualLinkError } = await adminClient.auth.admin.generateLink({
+          type: linkType,
+          email: inviteEmail,
+          options: {
+            redirectTo: inviteRedirectUrl,
+          },
+        });
+
+        if (manualLinkError || !manualLinkData?.properties?.action_link) {
+          return new Response(
+            JSON.stringify({ error: manualLinkError?.message ?? "Could not generate setup link." }),
+            {
+              status: 400,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            },
+          );
+        }
+
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            message: "Setup link generated. Copy and send it to the user.",
+            actionLink: manualLinkData.properties.action_link,
+          }),
+          {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
+      }
 
       const sendEmailResult = existingUser.email_confirmed_at
         ? await adminClient.auth.resetPasswordForEmail(inviteEmail, {
