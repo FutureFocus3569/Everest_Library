@@ -1,6 +1,6 @@
 # Supabase Edge Function setup
 
-This project includes `invite-user` so your admin can invite users from inside the app.
+This project includes `invite-user`, `admin-users`, and `delete-user` so your admin can manage access from inside the app.
 
 ## 1) Login and link project
 
@@ -19,10 +19,12 @@ supabase secrets set \
   ADMIN_EMAIL=courtney@futurefocus.co.nz
 ```
 
-## 3) Deploy the function
+## 3) Deploy the functions
 
 ```bash
 supabase functions deploy invite-user
+supabase functions deploy admin-users
+supabase functions deploy delete-user
 ```
 
-After deploy, the app page `/admin/users` can send invitation emails with first and last name metadata.
+After deploy, the app page `/admin/users` can send invites, view users, and delete users. Deleted users can be invited again later using the same email.

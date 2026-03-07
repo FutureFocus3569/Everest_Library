@@ -37,6 +37,7 @@ const AdminUsers = () => {
   const [accessUsers, setAccessUsers] = useState<AccessUser[]>([]);
   const [isLoadingAccess, setIsLoadingAccess] = useState(false);
   const [isSavingRole, setIsSavingRole] = useState<Record<string, boolean>>({});
+  const [isDeletingUser, setIsDeletingUser] = useState<Record<string, boolean>>({});
   const [roleDraftByUserId, setRoleDraftByUserId] = useState<Record<string, string>>({});
   const [accessError, setAccessError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -264,6 +265,78 @@ const AdminUsers = () => {
     }
   };
 
+  const deleteAccessUser = async (user: AccessUser) => {
+    if (!user.id) return;
+    if (user.id === currentUserId) {
+      setError("You cannot delete your own account.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete ${user.email ?? "this user"}? They will lose access now, and you can invite them again later.`
+    );
+
+    if (!confirmed) return;
+
+    setError(null);
+    setMessage(null);
+    setIsDeletingUser((prev) => ({ ...prev, [user.id]: true }));
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        setError("Your session expired. Please sign out and log in again.");
+        return;
+      }
+
+      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-user`;
+      const response = await fetch(functionUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ userId: user.id, email: user.email }),
+      });
+
+      if (!response.ok) {
+        const rawText = await response.text().catch(() => "");
+        let detailedError = `Delete failed (${response.status})`;
+
+        if (rawText) {
+          try {
+            const payload = JSON.parse(rawText) as { error?: string };
+            if (payload?.error) {
+              detailedError = payload.error;
+            }
+          } catch {
+            detailedError = `${detailedError}: ${rawText}`;
+          }
+        }
+
+        setError(detailedError);
+        return;
+      }
+
+      const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+      setMessage(payload?.message ?? "User deleted. You can invite them again later.");
+      setAccessUsers((prev) => prev.filter((accessUser) => accessUser.id !== user.id));
+      setRoleDraftByUserId((prev) => {
+        const next = { ...prev };
+        delete next[user.id];
+        return next;
+      });
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not delete user.");
+    } finally {
+      setIsDeletingUser((prev) => ({ ...prev, [user.id]: false }));
+    }
+  };
+
   return (
     <AppLayout>
       <div className="mx-auto max-w-4xl space-y-6">
@@ -397,62 +470,75 @@ const AdminUsers = () => {
 
             {accessError ? <p className="text-sm text-destructive">{accessError}</p> : null}
 
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Role</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {accessUsers.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell>{user.email ?? "-"}</TableCell>
-                    <TableCell>{[user.first_name, user.last_name].filter(Boolean).join(" ") || "-"}</TableCell>
-                    <TableCell>{user.confirmed ? "Confirmed" : "Invited"}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Select
-                          value={roleDraftByUserId[user.id] ?? user.role}
-                          onValueChange={(value) =>
-                            setRoleDraftByUserId((prev) => ({
-                              ...prev,
-                              [user.id]: value,
-                            }))
-                          }
-                        >
-                          <SelectTrigger className="w-[140px]">
-                            <SelectValue placeholder="Role" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="viewer">Viewer</SelectItem>
-                            <SelectItem value="editor">Editor</SelectItem>
-                            <SelectItem value="admin">Admin</SelectItem>
-                          </SelectContent>
-                        </Select>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {accessUsers.map((user) => (
+                    <TableRow key={user.id}>
+                      <TableCell>{user.email ?? "-"}</TableCell>
+                      <TableCell>{[user.first_name, user.last_name].filter(Boolean).join(" ") || "-"}</TableCell>
+                      <TableCell>{user.confirmed ? "Confirmed" : "Invited"}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Select
+                            value={roleDraftByUserId[user.id] ?? user.role}
+                            onValueChange={(value) =>
+                              setRoleDraftByUserId((prev) => ({
+                                ...prev,
+                                [user.id]: value,
+                              }))
+                            }
+                          >
+                            <SelectTrigger className="w-[140px]">
+                              <SelectValue placeholder="Role" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="viewer">Viewer</SelectItem>
+                              <SelectItem value="editor">Editor</SelectItem>
+                              <SelectItem value="admin">Admin</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => updateRole(user.id)}
+                            disabled={isSavingRole[user.id] || (roleDraftByUserId[user.id] ?? user.role) === user.role}
+                          >
+                            {isSavingRole[user.id] ? "Saving..." : "Save"}
+                          </Button>
+                        </div>
+                      </TableCell>
+                      <TableCell>
                         <Button
                           size="sm"
-                          variant="outline"
-                          onClick={() => updateRole(user.id)}
-                          disabled={isSavingRole[user.id] || (roleDraftByUserId[user.id] ?? user.role) === user.role}
+                          variant="destructive"
+                          onClick={() => deleteAccessUser(user)}
+                          disabled={isDeletingUser[user.id] || user.id === currentUserId}
                         >
-                          {isSavingRole[user.id] ? "Saving..." : "Save"}
+                          {isDeletingUser[user.id] ? "Deleting..." : "Delete"}
                         </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {!isLoadingAccess && accessUsers.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-muted-foreground">
-                      No users found.
-                    </TableCell>
-                  </TableRow>
-                ) : null}
-              </TableBody>
-            </Table>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {!isLoadingAccess && accessUsers.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-muted-foreground">
+                        No users found.
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
         ) : null}
