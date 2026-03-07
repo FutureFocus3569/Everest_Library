@@ -117,6 +117,7 @@ const AddBook = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const scannerControlsRef = useRef<IScannerControls | null>(null);
   const scannerReaderRef = useRef<BrowserMultiFormatReader | null>(null);
+  const scannerHandledRef = useRef(false);
 
   const [isbn, setIsbn] = useState("");
   const [title, setTitle] = useState("");
@@ -133,6 +134,7 @@ const AddBook = () => {
 
   useEffect(() => {
     if (!scannerOpen) {
+      scannerHandledRef.current = false;
       scannerControlsRef.current?.stop();
       scannerControlsRef.current = null;
       scannerReaderRef.current?.reset();
@@ -185,16 +187,21 @@ const AddBook = () => {
         const controls = await reader.decodeFromVideoDevice(
           preferredDevice.deviceId,
           videoElement,
-          (result, _error, controlsFromCallback) => {
+          (result) => {
             if (!result) return;
+            if (scannerHandledRef.current) return;
 
             const scannedValue = result.getText().trim();
             if (!scannedValue) return;
 
+            scannerHandledRef.current = true;
+
             setIsbn(scannedValue);
             toast.success(`Barcode scanned: ${scannedValue}`);
-            controlsFromCallback.stop();
-            setScannerOpen(false);
+
+            window.setTimeout(() => {
+              setScannerOpen(false);
+            }, 120);
           },
         );
 
