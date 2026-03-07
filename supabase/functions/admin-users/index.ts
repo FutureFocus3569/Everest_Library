@@ -116,6 +116,10 @@ Deno.serve(async (req) => {
   }
 
   const users = userList.users
+    .filter((listUser) => {
+      const email = (listUser.email ?? "").trim();
+      return email.includes("@");
+    })
     .map((listUser) => {
       const profile = profilesById.get(listUser.id);
       const metadataFirstName = (listUser.user_metadata?.first_name as string | undefined) ?? null;
