@@ -2,11 +2,33 @@ import { useLibrary } from "@/context/LibraryContext";
 import { cn } from "@/lib/utils";
 import { BookOpen } from "lucide-react";
 import { defaultBookTags } from "@/data/defaultTags";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export const CategoryFilter = () => {
-  const { selectedCategory, setSelectedCategory, books, readFilter, setReadFilter } = useLibrary();
+  const {
+    selectedCategory,
+    setSelectedCategory,
+    selectedAuthor,
+    setSelectedAuthor,
+    books,
+    readFilter,
+    setReadFilter,
+  } = useLibrary();
   const readCount = books.filter((book) => book.readByCurrentUser).length;
   const unreadCount = books.length - readCount;
+  const availableAuthors = Array.from(
+    new Set(
+      books
+        .map((book) => book.author?.trim())
+        .filter((author): author is string => Boolean(author))
+    )
+  ).sort((a, b) => a.localeCompare(b));
   const tagCounts = books.reduce<Record<string, number>>((acc, book) => {
     const uniqueBookTags = Array.from(new Set(book.tags ?? []));
     uniqueBookTags.forEach((tag) => {
@@ -19,6 +41,26 @@ export const CategoryFilter = () => {
 
   return (
     <div className="mb-6">
+      <h2 className="mb-3 font-display text-lg font-semibold text-foreground">Author</h2>
+      <div className="mb-4 max-w-xs">
+        <Select
+          value={selectedAuthor ?? "all-authors"}
+          onValueChange={(value) => setSelectedAuthor(value === "all-authors" ? null : value)}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="All authors" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all-authors">All authors</SelectItem>
+            {availableAuthors.map((author) => (
+              <SelectItem key={author} value={author}>
+                {author}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       <h2 className="mb-3 font-display text-lg font-semibold text-foreground">Reading</h2>
       <div className="mb-4 flex flex-wrap gap-2">
         <button

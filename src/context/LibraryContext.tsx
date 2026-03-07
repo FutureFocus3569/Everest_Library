@@ -14,9 +14,11 @@ interface LibraryContextType {
   toggleReadStatus: (bookId: string) => Promise<void>;
   categories: Category[];
   selectedCategory: string | null;
+  selectedAuthor: string | null;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
   setSelectedCategory: (cat: string | null) => void;
+  setSelectedAuthor: (author: string | null) => void;
   addBook: (book: Book) => void;
   updateBook: (book: Book) => void;
   deleteBook: (id: string) => void;
@@ -34,6 +36,7 @@ export const LibraryProvider = ({ children }: { children: ReactNode }) => {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [categories] = useState<Category[]>(defaultCategories);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedAuthor, setSelectedAuthor] = useState<string | null>(null);
   const [readFilter, setReadFilter] = useState<"all" | "read" | "unread">("all");
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -250,6 +253,7 @@ export const LibraryProvider = ({ children }: { children: ReactNode }) => {
     const matchesCategory = selectedCategory
       ? book.category === selectedCategory || (book.tags ?? []).some((tag) => tag === selectedCategory)
       : true;
+    const matchesAuthor = selectedAuthor ? book.author === selectedAuthor : true;
     const matchesSearch = searchQuery
       ? book.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         book.author.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -262,7 +266,7 @@ export const LibraryProvider = ({ children }: { children: ReactNode }) => {
         : readFilter === "read"
           ? Boolean(book.readByCurrentUser)
           : !book.readByCurrentUser;
-    return matchesCategory && matchesSearch && matchesReadFilter;
+    return matchesCategory && matchesAuthor && matchesSearch && matchesReadFilter;
   });
 
   return (
@@ -277,9 +281,11 @@ export const LibraryProvider = ({ children }: { children: ReactNode }) => {
         toggleReadStatus,
         categories,
         selectedCategory,
+        selectedAuthor,
         searchQuery,
         setSearchQuery,
         setSelectedCategory,
+        setSelectedAuthor,
         addBook,
         updateBook,
         deleteBook,
