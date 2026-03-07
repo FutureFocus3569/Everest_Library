@@ -294,12 +294,12 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
     );
   }
 
-  if (!session) {
-    return <AuthScreen />;
-  }
-
   if (isPasswordSetupMode) {
     return <PasswordSetupScreen onComplete={() => setIsPasswordSetupMode(false)} />;
+  }
+
+  if (!session) {
+    return <AuthScreen />;
   }
 
   return <>{children}</>;
