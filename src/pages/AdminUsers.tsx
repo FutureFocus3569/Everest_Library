@@ -283,46 +283,18 @@ const AdminUsers = () => {
     setIsDeletingUser((prev) => ({ ...prev, [user.id]: true }));
 
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session?.access_token) {
-        setError("Your session expired. Please sign out and log in again.");
-        return;
-      }
-
-      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-user`;
-      const response = await fetch(functionUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ userId: user.id, email: user.email }),
+      const { data, error: invokeError } = await supabase.functions.invoke("delete-user", {
+        body: { userId: user.id, email: user.email },
       });
 
-      if (!response.ok) {
-        const rawText = await response.text().catch(() => "");
-        let detailedError = `Delete failed (${response.status})`;
-
-        if (rawText) {
-          try {
-            const payload = JSON.parse(rawText) as { error?: string };
-            if (payload?.error) {
-              detailedError = payload.error;
-            }
-          } catch {
-            detailedError = `${detailedError}: ${rawText}`;
-          }
-        }
-
-        setError(detailedError);
+      if (invokeError) {
+        const detailedMessage =
+          (invokeError as { message?: string }).message || "Delete failed. Please try again.";
+        setError(detailedMessage);
         return;
       }
 
-      const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+      const payload = (data ?? null) as { message?: string } | null;
       setMessage(payload?.message ?? "User deleted. You can invite them again later.");
       setAccessUsers((prev) => prev.filter((accessUser) => accessUser.id !== user.id));
       setRoleDraftByUserId((prev) => {

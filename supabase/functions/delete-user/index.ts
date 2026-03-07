@@ -5,19 +5,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const parseJwtPayload = (token: string): { sub?: string } | null => {
-  try {
-    const [, payload] = token.split(".");
-    if (!payload) return null;
-    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
-    const padding = "=".repeat((4 - (normalized.length % 4)) % 4);
-    const json = atob(`${normalized}${padding}`);
-    return JSON.parse(json) as { sub?: string };
-  } catch {
-    return null;
-  }
-};
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -50,31 +37,31 @@ Deno.serve(async (req) => {
   }
 
   const accessToken = authHeader.replace("Bearer ", "").trim();
-  const tokenPayload = parseJwtPayload(accessToken);
-  const requesterUserId = tokenPayload?.sub;
-
-  if (!requesterUserId) {
-    return new Response(JSON.stringify({ error: "Invalid auth token" }), {
-      status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
 
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
   const {
     data: { user: requester },
     error: requesterError,
-  } = await adminClient.auth.admin.getUserById(requesterUserId);
+  } = await adminClient.auth.getUser(accessToken);
 
-  if (requesterError || !requester?.email) {
+  if (requesterError || !requester?.id || !requester?.email) {
     return new Response(JSON.stringify({ error: requesterError?.message ?? "Unauthorized" }), {
       status: 401,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
-  if (requester.email.toLowerCase() !== adminEmail) {
+  const { data: requesterProfile } = await adminClient
+    .from("profiles")
+    .select("role")
+    .eq("id", requester.id)
+    .single();
+
+  const isAdminByEmail = requester.email.toLowerCase() === adminEmail;
+  const isAdminByRole = requesterProfile?.role === "admin";
+
+  if (!isAdminByEmail && !isAdminByRole) {
     return new Response(JSON.stringify({ error: "Forbidden" }), {
       status: 403,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -91,7 +78,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  if (targetUserId === requesterUserId) {
+  if (targetUserId === requester.id) {
     return new Response(JSON.stringify({ error: "You cannot delete your own account." }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
