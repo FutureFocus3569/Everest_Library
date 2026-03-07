@@ -126,6 +126,14 @@ Deno.serve(async (req) => {
         },
       });
 
+      const { data: manualLinkData } = await adminClient.auth.admin.generateLink({
+        type: linkType,
+        email: inviteEmail,
+        options: {
+          redirectTo: inviteRedirectUrl,
+        },
+      });
+
       if (linkError) {
         return new Response(JSON.stringify({ error: linkError.message }), {
           status: 400,
@@ -140,6 +148,7 @@ Deno.serve(async (req) => {
             linkType === "invite"
               ? `Invite resent to ${inviteEmail}.`
               : `Sign-in link sent to ${inviteEmail}.`,
+          actionLink: manualLinkData?.properties?.action_link ?? null,
         }),
         {
           status: 200,
@@ -192,10 +201,25 @@ Deno.serve(async (req) => {
       });
     }
 
-    return new Response(JSON.stringify({ ok: true, message: `Invite sent to ${inviteEmail}.` }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    const { data: manualLinkData } = await adminClient.auth.admin.generateLink({
+      type: "invite",
+      email: inviteEmail,
+      options: {
+        redirectTo: inviteRedirectUrl,
+      },
     });
+
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        message: `Invite sent to ${inviteEmail}. If no email arrives, use the manual invite link below.`,
+        actionLink: manualLinkData?.properties?.action_link ?? null,
+      }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected server error.";
     return new Response(JSON.stringify({ error: message }), {
