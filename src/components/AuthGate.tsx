@@ -7,6 +7,24 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Mountain } from "lucide-react";
 
+const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
+  let timeoutId: number | undefined;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = window.setTimeout(() => {
+      reject(new Error("Session check timed out"));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId !== undefined) {
+      window.clearTimeout(timeoutId);
+    }
+  }
+};
+
 const getAuthTypeFromUrl = (): string | null => {
   if (typeof window === "undefined") {
     return null;
@@ -246,6 +264,7 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPasswordSetupMode, setIsPasswordSetupMode] = useState(false);
+  const [authBootstrapError, setAuthBootstrapError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!hasSupabaseEnv) {
@@ -254,11 +273,17 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
     }
 
     const fetchSession = async () => {
-      const { data } = await supabase.auth.getSession();
-      setSession(data.session);
-      const authType = getAuthTypeFromUrl();
-      if (authType === "recovery" || authType === "invite" || hasPasswordSetupFlag()) {
-        setIsPasswordSetupMode(true);
+      try {
+        const { data } = await withTimeout(supabase.auth.getSession(), 10000);
+        setSession(data.session);
+        setAuthBootstrapError(null);
+        const authType = getAuthTypeFromUrl();
+        if (authType === "recovery" || authType === "invite" || hasPasswordSetupFlag()) {
+          setIsPasswordSetupMode(true);
+        }
+      } catch {
+        setSession(null);
+        setAuthBootstrapError("Could not restore your session. Please log in again.");
       }
       setIsLoading(false);
     };
@@ -308,7 +333,16 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
   }
 
   if (!session) {
-    return <AuthScreen />;
+    return (
+      <>
+        <AuthScreen />
+        {authBootstrapError ? (
+          <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md border border-border bg-card px-4 py-2 text-sm text-muted-foreground shadow-md">
+            {authBootstrapError}
+          </div>
+        ) : null}
+      </>
+    );
   }
 
   return <>{children}</>;
