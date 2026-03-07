@@ -1,16 +1,61 @@
+import { useEffect, useState } from "react";
 import { useLibrary } from "@/context/LibraryContext";
-import { BookOpen, Users, Tags, CheckCircle2 } from "lucide-react";
+import { BookOpen, Users, UserRound, CheckCircle2 } from "lucide-react";
 import { motion } from "framer-motion";
+import { supabase } from "@/lib/supabase";
 
 export const StatsBar = () => {
   const { books, readCount } = useLibrary();
+  const [userCount, setUserCount] = useState<number>(1);
 
   const totalBooks = books.length;
-  const activeTags = new Set(books.flatMap((book) => book.tags ?? [])).size;
   const loanedOut = books.filter((b) => b.loanedTo).length;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadUserCount = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        if (!cancelled) setUserCount(1);
+        return;
+      }
+
+      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-users`;
+      const response = await fetch(functionUrl, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (!cancelled) setUserCount(1);
+        return;
+      }
+
+      const payload = (await response.json().catch(() => null)) as { users?: Array<unknown> } | null;
+      const count = payload?.users?.length ?? 1;
+      if (!cancelled) {
+        setUserCount(count);
+      }
+    };
+
+    loadUserCount();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const stats = [
     { label: "Books", value: totalBooks, icon: BookOpen },
-    { label: "Active Tags", value: activeTags, icon: Tags },
+    { label: "Users", value: userCount, icon: UserRound },
     { label: "On Loan", value: loanedOut, icon: Users },
     { label: "Read", value: readCount, icon: CheckCircle2 },
   ];
