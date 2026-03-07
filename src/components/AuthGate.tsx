@@ -22,6 +22,15 @@ const getAuthTypeFromUrl = (): string | null => {
   return hashParams.get("type") ?? searchParams.get("type");
 };
 
+const hasPasswordSetupFlag = (): boolean => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const searchParams = new URLSearchParams(window.location.search);
+  return searchParams.get("setup") === "password";
+};
+
 const AuthScreen = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -248,7 +257,7 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
       const { data } = await supabase.auth.getSession();
       setSession(data.session);
       const authType = getAuthTypeFromUrl();
-      if (authType === "recovery" || authType === "invite") {
+      if (authType === "recovery" || authType === "invite" || hasPasswordSetupFlag()) {
         setIsPasswordSetupMode(true);
       }
       setIsLoading(false);
@@ -265,7 +274,7 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
       }
 
       const authType = getAuthTypeFromUrl();
-      if (authType === "invite") {
+      if (authType === "invite" || hasPasswordSetupFlag()) {
         setIsPasswordSetupMode(true);
       }
     });

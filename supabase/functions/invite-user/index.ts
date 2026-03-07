@@ -5,6 +5,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const withPasswordSetupFlag = (url: string): string => {
+  if (!url) return url;
+  const hasQuery = url.includes("?");
+  const hasFlag = /(?:\?|&)setup=password(?:&|$)/.test(url);
+  if (hasFlag) return url;
+  return `${url}${hasQuery ? "&" : "?"}setup=password`;
+};
+
 Deno.serve(async (req) => {
   try {
     if (req.method === "OPTIONS") {
@@ -21,7 +29,8 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const adminEmail = (Deno.env.get("ADMIN_EMAIL") ?? "").toLowerCase();
-    const inviteRedirectUrl = Deno.env.get("INVITE_REDIRECT_URL") ?? "http://localhost:8080";
+    const rawInviteRedirectUrl = Deno.env.get("INVITE_REDIRECT_URL") ?? "http://localhost:8080";
+    const inviteRedirectUrl = withPasswordSetupFlag(rawInviteRedirectUrl);
 
     if (!supabaseUrl || !serviceRoleKey || !adminEmail) {
       return new Response(JSON.stringify({ error: "Server secrets are not configured" }), {
