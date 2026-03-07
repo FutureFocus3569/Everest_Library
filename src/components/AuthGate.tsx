@@ -11,13 +11,16 @@ const AuthScreen = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSendingReset, setIsSendingReset] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [showLogoImage, setShowLogoImage] = useState(true);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSubmitting(true);
     setError(null);
+    setInfo(null);
 
     const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
     if (signInError) {
@@ -25,6 +28,35 @@ const AuthScreen = () => {
     }
 
     setIsSubmitting(false);
+  };
+
+  const handleForgotPassword = async () => {
+    setError(null);
+    setInfo(null);
+
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
+      setError("Enter your email first, then tap Forgot password.");
+      return;
+    }
+
+    setIsSendingReset(true);
+
+    const redirectTo =
+      typeof window !== "undefined" ? `${window.location.origin}/` : undefined;
+
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+      redirectTo,
+    });
+
+    if (resetError) {
+      setError(resetError.message);
+      setIsSendingReset(false);
+      return;
+    }
+
+    setInfo("Password reset email sent. Check your inbox and spam folder.");
+    setIsSendingReset(false);
   };
 
   return (
@@ -78,7 +110,20 @@ const AuthScreen = () => {
               />
             </div>
 
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-auto px-0 text-sm"
+                onClick={handleForgotPassword}
+                disabled={isSendingReset}
+              >
+                {isSendingReset ? "Sending..." : "Forgot password?"}
+              </Button>
+            </div>
+
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
+            {info ? <p className="text-sm text-muted-foreground">{info}</p> : null}
 
             <Button type="submit" className="w-full" disabled={isSubmitting}>
               {isSubmitting ? "Please wait..." : "Log in"}
