@@ -132,13 +132,26 @@ const AddBook = () => {
   const [scannerLoading, setScannerLoading] = useState(false);
   const [scannerError, setScannerError] = useState<string | null>(null);
 
+  const stopScannerSafely = () => {
+    try {
+      scannerControlsRef.current?.stop();
+    } catch {
+      // no-op
+    }
+    scannerControlsRef.current = null;
+
+    try {
+      scannerReaderRef.current?.reset();
+    } catch {
+      // no-op
+    }
+    scannerReaderRef.current = null;
+  };
+
   useEffect(() => {
     if (!scannerOpen) {
       scannerHandledRef.current = false;
-      scannerControlsRef.current?.stop();
-      scannerControlsRef.current = null;
-      scannerReaderRef.current?.reset();
-      scannerReaderRef.current = null;
+      stopScannerSafely();
       setScannerLoading(false);
       return;
     }
@@ -188,20 +201,25 @@ const AddBook = () => {
           preferredDevice.deviceId,
           videoElement,
           (result) => {
-            if (!result) return;
-            if (scannerHandledRef.current) return;
+            try {
+              if (!result) return;
+              if (scannerHandledRef.current) return;
 
-            const scannedValue = result.getText().trim();
-            if (!scannedValue) return;
+              const scannedValue = result.getText().trim();
+              if (!scannedValue) return;
 
-            scannerHandledRef.current = true;
+              scannerHandledRef.current = true;
+              stopScannerSafely();
 
-            setIsbn(scannedValue);
-            toast.success(`Barcode scanned: ${scannedValue}`);
-
-            window.setTimeout(() => {
+              setIsbn(scannedValue);
+              toast.success(`Barcode scanned: ${scannedValue}`);
               setScannerOpen(false);
-            }, 120);
+            } catch {
+              scannerHandledRef.current = true;
+              stopScannerSafely();
+              setScannerError("Scan completed, but preview could not close cleanly. Please reopen scanner.");
+              setScannerOpen(false);
+            }
           },
         );
 
@@ -235,10 +253,7 @@ const AddBook = () => {
 
     return () => {
       cancelled = true;
-      scannerControlsRef.current?.stop();
-      scannerControlsRef.current = null;
-      scannerReaderRef.current?.reset();
-      scannerReaderRef.current = null;
+      stopScannerSafely();
     };
   }, [scannerOpen]);
 
