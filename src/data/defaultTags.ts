@@ -18,6 +18,7 @@ export const defaultBookTags = [
   "Health",
   "Parenting",
   "Education",
+  "Workbook",
   "Fiction",
 ] as const;
 

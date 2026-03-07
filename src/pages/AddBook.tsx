@@ -29,6 +29,7 @@ const pickTagsFromSubjects = (subjects: string[]): string[] => {
   if (/history|historical/.test(subjectText)) matchedTags.push("History");
   if (/science|physics|chemistry|biology/.test(subjectText)) matchedTags.push("Science");
   if (/technology|tech|computing/.test(subjectText)) matchedTags.push("Technology");
+  if (/workbook|work book|study guide|practice/.test(subjectText)) matchedTags.push("Workbook");
   if (/fiction|novel/.test(subjectText)) matchedTags.push("Fiction");
 
   return uniqueTags(matchedTags);
