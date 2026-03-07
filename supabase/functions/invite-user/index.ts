@@ -125,15 +125,15 @@ Deno.serve(async (req) => {
         });
       }
 
-      const linkType = existingUser.email_confirmed_at ? "magiclink" : "invite";
+      const linkType = existingUser.email_confirmed_at ? "recovery" : "invite";
 
-      const { error: linkError } = await adminClient.auth.admin.generateLink({
-        type: linkType,
-        email: inviteEmail,
-        options: {
-          redirectTo: inviteRedirectUrl,
-        },
-      });
+      const sendEmailResult = existingUser.email_confirmed_at
+        ? await adminClient.auth.resetPasswordForEmail(inviteEmail, {
+            redirectTo: inviteRedirectUrl,
+          })
+        : await adminClient.auth.admin.inviteUserByEmail(inviteEmail, {
+            redirectTo: inviteRedirectUrl,
+          });
 
       const { data: manualLinkData } = await adminClient.auth.admin.generateLink({
         type: linkType,
@@ -143,11 +143,24 @@ Deno.serve(async (req) => {
         },
       });
 
-      if (linkError) {
-        return new Response(JSON.stringify({ error: linkError.message }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+      const sendEmailError = sendEmailResult.error;
+
+      if (sendEmailError) {
+        const message = /rate limit/i.test(sendEmailError.message)
+          ? "Email provider rate limit reached. Copy and send the secure link below."
+          : `Could not send resend email (${sendEmailError.message}). Copy and send the secure link below.`;
+
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            message,
+            actionLink: manualLinkData?.properties?.action_link ?? null,
+          }),
+          {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
       }
 
       return new Response(
@@ -156,7 +169,7 @@ Deno.serve(async (req) => {
           message:
             linkType === "invite"
               ? `Invite resent to ${inviteEmail}.`
-              : `Sign-in link sent to ${inviteEmail}.`,
+              : `Password setup link sent to ${inviteEmail}.`,
           actionLink: manualLinkData?.properties?.action_link ?? null,
         }),
         {

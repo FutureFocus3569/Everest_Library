@@ -85,7 +85,7 @@ const AuthScreen = () => {
     setIsSendingReset(true);
 
     const redirectTo =
-      typeof window !== "undefined" ? `${window.location.origin}/` : undefined;
+      typeof window !== "undefined" ? `${window.location.origin}/?setup=password` : undefined;
 
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
       redirectTo,
