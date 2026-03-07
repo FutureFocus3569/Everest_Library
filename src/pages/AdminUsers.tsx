@@ -67,10 +67,12 @@ const AdminUsers = () => {
         typeof user.user_metadata?.first_name === "string" ? user.user_metadata.first_name : "";
       const metadataLastName =
         typeof user.user_metadata?.last_name === "string" ? user.user_metadata.last_name : "";
+      const metadataAvatarUrl =
+        typeof user.user_metadata?.avatar_url === "string" ? user.user_metadata.avatar_url : "";
 
       setProfileFirstName(metadataFirstName);
       setProfileLastName(metadataLastName);
-      setProfileAvatarUrl(typeof user.user_metadata?.avatar_url === "string" ? user.user_metadata.avatar_url : "");
+      setProfileAvatarUrl(metadataAvatarUrl);
 
       let { data: profile, error: profileError } = await supabase
         .from("profiles")
@@ -97,7 +99,7 @@ const AdminUsers = () => {
       if (!profileError && profile) {
         setProfileFirstName(profile.first_name ?? metadataFirstName);
         setProfileLastName(profile.last_name ?? metadataLastName);
-        setProfileAvatarUrl(profile.avatar_url ?? "");
+        setProfileAvatarUrl(profile.avatar_url ?? metadataAvatarUrl);
       }
     };
 
@@ -175,6 +177,18 @@ const AdminUsers = () => {
     setError(null);
     setMessage(null);
     let successMessage = "Your profile has been updated.";
+
+    const { error: authUpdateError } = await supabase.auth.updateUser({
+      data: {
+        first_name: profileFirstName.trim() || null,
+        last_name: profileLastName.trim() || null,
+        avatar_url: profileAvatarUrl.trim() || null,
+      },
+    });
+
+    if (authUpdateError) {
+      successMessage = "Saved in app profile, but could not sync auth profile metadata.";
+    }
 
     let { error: updateError } = await supabase
       .from("profiles")
