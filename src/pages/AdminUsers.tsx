@@ -292,37 +292,37 @@ const AdminUsers = () => {
         return;
       }
 
-      const { data, error: invokeError } = await supabase.functions.invoke("delete-user", {
-        body: { userId: user.id, email: user.email },
+      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-user`;
+      const response = await fetch(functionUrl, {
+        method: "POST",
         headers: {
+          "Content-Type": "application/json",
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
           Authorization: `Bearer ${session.access_token}`,
         },
+        body: JSON.stringify({ userId: user.id, email: user.email }),
       });
 
-      if (invokeError) {
-        let detailedMessage =
-          (invokeError as { message?: string }).message || "Delete failed. Please try again.";
+      if (!response.ok) {
+        const rawText = await response.text().catch(() => "");
+        let detailedError = `Delete failed (${response.status}${response.statusText ? ` ${response.statusText}` : ""})`;
 
-        const invokeErrorWithContext = invokeError as {
-          context?: { json?: () => Promise<{ error?: string }> };
-        };
-
-        if (invokeErrorWithContext.context?.json) {
+        if (rawText) {
           try {
-            const payload = await invokeErrorWithContext.context.json();
+            const payload = JSON.parse(rawText) as { error?: string };
             if (payload?.error) {
-              detailedMessage = payload.error;
+              detailedError = payload.error;
             }
           } catch {
-            // Ignore parse errors and keep fallback message.
+            detailedError = `${detailedError}: ${rawText}`;
           }
         }
 
-        setError(detailedMessage);
+        setError(detailedError);
         return;
       }
 
-      const payload = (data ?? null) as { message?: string } | null;
+      const payload = (await response.json().catch(() => null)) as { message?: string } | null;
       setMessage(payload?.message ?? "User deleted. You can invite them again later.");
       setAccessUsers((prev) => prev.filter((accessUser) => accessUser.id !== user.id));
       setRoleDraftByUserId((prev) => {
