@@ -19,8 +19,8 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <LibraryProvider>
-          <AuthGate>
+        <AuthGate>
+          <LibraryProvider>
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/add" element={<AddBook />} />
@@ -28,8 +28,8 @@ const App = () => (
               <Route path="/admin/users" element={<AdminUsers />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
-          </AuthGate>
-        </LibraryProvider>
+          </LibraryProvider>
+        </AuthGate>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

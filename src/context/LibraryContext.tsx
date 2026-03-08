@@ -4,6 +4,12 @@ import { categories as defaultCategories } from "@/data/mockData";
 import { supabase } from "@/lib/supabase";
 import { uniqueTags } from "@/data/defaultTags";
 
+const isLocalhost =
+  typeof window !== "undefined" &&
+  (window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1" ||
+    window.location.hostname === "::1");
+
 interface LibraryContextType {
   books: Book[];
   currentRole: "viewer" | "editor";
@@ -43,44 +49,130 @@ export const LibraryProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     const loadBooksForCurrentUser = async () => {
       const {
-        data: { user },
-      } = await supabase.auth.getUser();
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      let user = session?.user ?? null;
 
       if (!user) {
-        setCurrentUserId(null);
-        setBooks([]);
-        return;
+        const {
+          data: { user: fetchedUser },
+        } = await supabase.auth.getUser();
+        user = fetchedUser ?? null;
       }
 
-      setCurrentUserId(user.id);
+      setCurrentUserId(user?.id ?? null);
       setBooks([]);
 
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single();
+      if (user?.id) {
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .single();
 
-      setCurrentRole(profileData?.role === "viewer" ? "viewer" : "editor");
+        setCurrentRole(profileData?.role === "viewer" ? "viewer" : "editor");
+      } else {
+        setCurrentRole("editor");
+      }
 
       const selectColumnsWithTags =
         "id, title, author, isbn, category, tags, copies, description, cover_url, loaned_to, loan_date, added_date";
       const selectColumnsWithoutTags =
         "id, title, author, isbn, category, copies, description, cover_url, loaned_to, loan_date, added_date";
 
-      let { data, error } = await supabase
-        .from("books")
-        .select(selectColumnsWithTags)
-        .order("created_at", { ascending: false });
+      const fetchBooksFromLocalProxy = async (selectColumns: string, accessToken?: string) => {
+        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        if (!anonKey) return null;
 
-      if (error && /tags/i.test(error.message)) {
-        const fallbackQuery = await supabase
+        const authToken = accessToken && accessToken.length > 0 ? accessToken : anonKey;
+
+        const response = await fetch(
+          `/supabase/rest/v1/books?select=${encodeURIComponent(selectColumns)}&order=created_at.desc`,
+          {
+            headers: {
+              apikey: anonKey,
+              Authorization: `Bearer ${authToken}`,
+              Accept: "application/json",
+            },
+          },
+        );
+
+        if (!response.ok) {
+          return null;
+        }
+
+        const payload = (await response.json()) as Array<Record<string, unknown>>;
+        return Array.isArray(payload) ? payload : null;
+      };
+
+      const fetchBooksFromLocalProxyWithAnonFallback = async (selectColumns: string) => {
+        const withUserToken = await fetchBooksFromLocalProxy(selectColumns, accessToken);
+        if (withUserToken && withUserToken.length > 0) {
+          return withUserToken;
+        }
+
+        const withAnonToken = await fetchBooksFromLocalProxy(selectColumns);
+        if (withAnonToken && withAnonToken.length > 0) {
+          return withAnonToken;
+        }
+
+        return withUserToken ?? withAnonToken;
+      };
+
+      const accessToken = session?.access_token ?? "";
+
+      let data: Array<Record<string, unknown>> | null = null;
+      let error: { message: string } | null = null;
+
+      if (isLocalhost) {
+        const proxyWithTags = await fetchBooksFromLocalProxyWithAnonFallback(selectColumnsWithTags);
+        if (proxyWithTags && proxyWithTags.length > 0) {
+          data = proxyWithTags;
+        }
+      }
+
+      if (!data && isLocalhost) {
+        const proxyWithoutTags = await fetchBooksFromLocalProxyWithAnonFallback(selectColumnsWithoutTags);
+        if (proxyWithoutTags && proxyWithoutTags.length > 0) {
+          data = proxyWithoutTags;
+        }
+      }
+
+      if (!data) {
+        const supabaseQuery = await supabase
           .from("books")
-          .select(selectColumnsWithoutTags)
+          .select(selectColumnsWithTags)
           .order("created_at", { ascending: false });
 
-        data = fallbackQuery.data;
-        error = fallbackQuery.error;
+        data = (supabaseQuery.data as Array<Record<string, unknown>> | null) ?? null;
+        error = supabaseQuery.error ? { message: supabaseQuery.error.message } : null;
+
+        if (error && /tags/i.test(error.message)) {
+          const fallbackQuery = await supabase
+            .from("books")
+            .select(selectColumnsWithoutTags)
+            .order("created_at", { ascending: false });
+
+          data = (fallbackQuery.data as Array<Record<string, unknown>> | null) ?? null;
+          error = fallbackQuery.error ? { message: fallbackQuery.error.message } : null;
+        }
+      }
+
+      if ((error || !data || data.length === 0) && isLocalhost) {
+        const proxyWithTags = await fetchBooksFromLocalProxyWithAnonFallback(selectColumnsWithTags);
+        if (proxyWithTags && proxyWithTags.length > 0) {
+          data = proxyWithTags;
+          error = null;
+        }
+      }
+
+      if ((error || !data || data.length === 0) && isLocalhost) {
+        const proxyWithoutTags = await fetchBooksFromLocalProxyWithAnonFallback(selectColumnsWithoutTags);
+        if (proxyWithoutTags && proxyWithoutTags.length > 0) {
+          data = proxyWithoutTags;
+          error = null;
+        }
       }
 
       if (error || !data) {
@@ -115,13 +207,15 @@ export const LibraryProvider = ({ children }: { children: ReactNode }) => {
       }
 
       let readBookIds = new Set<string>();
-      const { data: readData, error: readError } = await supabase
-        .from("user_book_reads")
-        .select("book_id")
-        .eq("user_id", user.id);
+      if (user?.id) {
+        const { data: readData, error: readError } = await supabase
+          .from("user_book_reads")
+          .select("book_id")
+          .eq("user_id", user.id);
 
-      if (!readError && readData) {
-        readBookIds = new Set(readData.map((row) => row.book_id));
+        if (!readError && readData) {
+          readBookIds = new Set(readData.map((row) => row.book_id));
+        }
       }
 
       const mappedBooks: Book[] = data.map((row) => ({
@@ -153,7 +247,8 @@ export const LibraryProvider = ({ children }: { children: ReactNode }) => {
         loadBooksForCurrentUser();
       } else {
         setCurrentUserId(null);
-        setBooks([]);
+        setCurrentRole("editor");
+        loadBooksForCurrentUser();
       }
     });
 
