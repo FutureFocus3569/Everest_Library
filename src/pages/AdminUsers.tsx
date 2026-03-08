@@ -17,6 +17,8 @@ type AccessUser = {
   first_name: string | null;
   last_name: string | null;
   role: string;
+  currently_reading_book_id: string | null;
+  currently_reading_title: string | null;
   confirmed: boolean;
   last_sign_in_at: string | null;
   created_at: string;
@@ -654,6 +656,7 @@ const AdminUsers = () => {
                     <TableHead>Email</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Currently Reading</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
@@ -664,6 +667,7 @@ const AdminUsers = () => {
                       <TableCell>{user.email ?? "-"}</TableCell>
                       <TableCell>{[user.first_name, user.last_name].filter(Boolean).join(" ") || "-"}</TableCell>
                       <TableCell>{user.confirmed ? "Confirmed" : "Invited"}</TableCell>
+                      <TableCell>{user.currently_reading_title ?? "-"}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Select
@@ -708,7 +712,7 @@ const AdminUsers = () => {
                   ))}
                   {!isLoadingAccess && accessUsers.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-muted-foreground">
+                      <TableCell colSpan={6} className="text-muted-foreground">
                         No users found.
                       </TableCell>
                     </TableRow>

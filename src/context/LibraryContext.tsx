@@ -4,20 +4,18 @@ import { categories as defaultCategories } from "@/data/mockData";
 import { supabase } from "@/lib/supabase";
 import { uniqueTags } from "@/data/defaultTags";
 
-const isLocalhost =
-  typeof window !== "undefined" &&
-  (window.location.hostname === "localhost" ||
-    window.location.hostname === "127.0.0.1" ||
-    window.location.hostname === "::1");
+const useDevProxy = import.meta.env.DEV;
 
 interface LibraryContextType {
   books: Book[];
   currentRole: "viewer" | "editor";
   canManageBooks: boolean;
   readCount: number;
+  currentlyReadingBookId: string | null;
   readFilter: "all" | "read" | "unread";
   setReadFilter: (filter: "all" | "read" | "unread") => void;
   toggleReadStatus: (bookId: string) => Promise<void>;
+  toggleCurrentlyReading: (bookId: string) => Promise<void>;
   categories: Category[];
   selectedCategory: string | null;
   selectedAuthor: string | null;
@@ -40,6 +38,7 @@ export const LibraryProvider = ({ children }: { children: ReactNode }) => {
   const [books, setBooks] = useState<Book[]>([]);
   const [currentRole, setCurrentRole] = useState<"viewer" | "editor">("editor");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentlyReadingBookId, setCurrentlyReadingBookId] = useState<string | null>(null);
   const [categories] = useState<Category[]>(defaultCategories);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedAuthor, setSelectedAuthor] = useState<string | null>(null);
@@ -62,6 +61,11 @@ export const LibraryProvider = ({ children }: { children: ReactNode }) => {
       }
 
       setCurrentUserId(user?.id ?? null);
+      const metadataCurrentlyReadingBookId =
+        typeof user?.user_metadata?.currently_reading_book_id === "string"
+          ? user.user_metadata.currently_reading_book_id
+          : null;
+      setCurrentlyReadingBookId(metadataCurrentlyReadingBookId);
       setBooks([]);
 
       if (user?.id) {
@@ -125,14 +129,14 @@ export const LibraryProvider = ({ children }: { children: ReactNode }) => {
       let data: Array<Record<string, unknown>> | null = null;
       let error: { message: string } | null = null;
 
-      if (isLocalhost) {
+      if (useDevProxy) {
         const proxyWithTags = await fetchBooksFromLocalProxyWithAnonFallback(selectColumnsWithTags);
         if (proxyWithTags && proxyWithTags.length > 0) {
           data = proxyWithTags;
         }
       }
 
-      if (!data && isLocalhost) {
+      if (!data && useDevProxy) {
         const proxyWithoutTags = await fetchBooksFromLocalProxyWithAnonFallback(selectColumnsWithoutTags);
         if (proxyWithoutTags && proxyWithoutTags.length > 0) {
           data = proxyWithoutTags;
@@ -159,7 +163,7 @@ export const LibraryProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      if ((error || !data || data.length === 0) && isLocalhost) {
+      if ((error || !data || data.length === 0) && useDevProxy) {
         const proxyWithTags = await fetchBooksFromLocalProxyWithAnonFallback(selectColumnsWithTags);
         if (proxyWithTags && proxyWithTags.length > 0) {
           data = proxyWithTags;
@@ -167,7 +171,7 @@ export const LibraryProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      if ((error || !data || data.length === 0) && isLocalhost) {
+      if ((error || !data || data.length === 0) && useDevProxy) {
         const proxyWithoutTags = await fetchBooksFromLocalProxyWithAnonFallback(selectColumnsWithoutTags);
         if (proxyWithoutTags && proxyWithoutTags.length > 0) {
           data = proxyWithoutTags;
@@ -231,6 +235,7 @@ export const LibraryProvider = ({ children }: { children: ReactNode }) => {
         loanDate: row.loan_date ?? undefined,
         notes: notesByBookId[row.id] ?? [],
         readByCurrentUser: readBookIds.has(row.id),
+        currentlyReadingByCurrentUser: metadataCurrentlyReadingBookId === row.id,
         addedDate: row.added_date ?? new Date().toISOString().split("T")[0],
         description: row.description ?? undefined,
       }));
@@ -247,6 +252,7 @@ export const LibraryProvider = ({ children }: { children: ReactNode }) => {
         loadBooksForCurrentUser();
       } else {
         setCurrentUserId(null);
+        setCurrentlyReadingBookId(null);
         setCurrentRole("editor");
         loadBooksForCurrentUser();
       }
@@ -298,6 +304,34 @@ export const LibraryProvider = ({ children }: { children: ReactNode }) => {
     }
 
     setBooks((prev) => prev.map((b) => (b.id === bookId ? { ...b, readByCurrentUser: true } : b)));
+  };
+
+  const toggleCurrentlyReading = async (bookId: string) => {
+    if (!currentUserId) {
+      return;
+    }
+
+    const nextBookId = currentlyReadingBookId === bookId ? null : bookId;
+    const nextBookTitle = nextBookId ? books.find((book) => book.id === nextBookId)?.title ?? null : null;
+
+    const { error } = await supabase.auth.updateUser({
+      data: {
+        currently_reading_book_id: nextBookId,
+        currently_reading_title: nextBookTitle,
+      },
+    });
+
+    if (error) {
+      return;
+    }
+
+    setCurrentlyReadingBookId(nextBookId);
+    setBooks((prev) =>
+      prev.map((book) => ({
+        ...book,
+        currentlyReadingByCurrentUser: nextBookId === book.id,
+      })),
+    );
   };
 
   const addBook = (book: Book) => setBooks((prev) => [book, ...prev]);
@@ -378,9 +412,11 @@ export const LibraryProvider = ({ children }: { children: ReactNode }) => {
         currentRole,
         canManageBooks,
         readCount,
+        currentlyReadingBookId,
         readFilter,
         setReadFilter,
         toggleReadStatus,
+        toggleCurrentlyReading,
         categories,
         selectedCategory,
         selectedAuthor,

@@ -62,6 +62,14 @@ export const BookCard = ({ book, index }: BookCardProps) => {
               </Badge>
             </div>
           )}
+
+          {book.currentlyReadingByCurrentUser && (
+            <div className="absolute right-2 bottom-2">
+              <Badge className="border-0 bg-accent text-accent-foreground text-xs font-body">
+                Currently Reading
+              </Badge>
+            </div>
+          )}
         </div>
 
         {/* Info */}

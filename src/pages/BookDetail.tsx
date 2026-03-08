@@ -36,7 +36,18 @@ import { defaultBookTags, uniqueTags } from "@/data/defaultTags";
 const BookDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { books, loanBook, returnBook, addNote, deleteBook, updateBook, canManageBooks, toggleReadStatus } = useLibrary();
+  const {
+    books,
+    loanBook,
+    returnBook,
+    addNote,
+    deleteBook,
+    updateBook,
+    canManageBooks,
+    toggleReadStatus,
+    currentlyReadingBookId,
+    toggleCurrentlyReading,
+  } = useLibrary();
   const book = books.find((b) => b.id === id);
 
   const [loanName, setLoanName] = useState("");
@@ -398,6 +409,14 @@ const BookDetail = () => {
                 className="font-body"
               >
                 {book.readByCurrentUser ? "Mark as Unread" : "Mark as Read"}
+              </Button>
+              <Button
+                type="button"
+                variant={currentlyReadingBookId === book.id ? "default" : "outline"}
+                onClick={() => void toggleCurrentlyReading(book.id)}
+                className="ml-2 font-body"
+              >
+                {currentlyReadingBookId === book.id ? "Currently Reading" : "Set Currently Reading"}
               </Button>
             </div>
 

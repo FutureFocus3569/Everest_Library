@@ -124,6 +124,10 @@ Deno.serve(async (req) => {
       const profile = profilesById.get(listUser.id);
       const metadataFirstName = (listUser.user_metadata?.first_name as string | undefined) ?? null;
       const metadataLastName = (listUser.user_metadata?.last_name as string | undefined) ?? null;
+      const metadataCurrentlyReadingBookId =
+        (listUser.user_metadata?.currently_reading_book_id as string | undefined) ?? null;
+      const metadataCurrentlyReadingTitle =
+        (listUser.user_metadata?.currently_reading_title as string | undefined) ?? null;
 
       return {
         id: listUser.id,
@@ -131,6 +135,8 @@ Deno.serve(async (req) => {
         first_name: profile?.first_name ?? metadataFirstName,
         last_name: profile?.last_name ?? metadataLastName,
         role: profile?.role ?? "user",
+        currently_reading_book_id: metadataCurrentlyReadingBookId,
+        currently_reading_title: metadataCurrentlyReadingTitle,
         confirmed: Boolean(listUser.email_confirmed_at),
         last_sign_in_at: listUser.last_sign_in_at,
         created_at: listUser.created_at,

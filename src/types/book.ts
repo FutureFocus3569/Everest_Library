@@ -18,6 +18,7 @@ export interface Book {
   loanDate?: string;
   notes: BookNote[];
   readByCurrentUser?: boolean;
+  currentlyReadingByCurrentUser?: boolean;
   addedDate: string;
   description?: string;
   pageCount?: number;
