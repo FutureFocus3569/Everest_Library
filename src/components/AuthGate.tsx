@@ -1,29 +1,11 @@
 import { FormEvent, ReactNode, useEffect, useState } from "react";
-import { Session } from "@supabase/supabase-js";
+import { EmailOtpType, Session } from "@supabase/supabase-js";
 import { supabase, hasSupabaseEnv } from "@/lib/supabase";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Mountain } from "lucide-react";
-
-const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
-  let timeoutId: number | undefined;
-
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutId = window.setTimeout(() => {
-      reject(new Error("Session check timed out"));
-    }, timeoutMs);
-  });
-
-  try {
-    return await Promise.race([promise, timeoutPromise]);
-  } finally {
-    if (timeoutId !== undefined) {
-      window.clearTimeout(timeoutId);
-    }
-  }
-};
 
 const getAuthTypeFromUrl = (): string | null => {
   if (typeof window === "undefined") {
@@ -49,6 +31,42 @@ const hasPasswordSetupFlag = (): boolean => {
   return searchParams.get("setup") === "password";
 };
 
+const resolveSessionFromAuthUrl = async (): Promise<Session | null> => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const hash = window.location.hash?.startsWith("#")
+    ? window.location.hash.slice(1)
+    : window.location.hash;
+  const hashParams = new URLSearchParams(hash ?? "");
+
+  const code = searchParams.get("code");
+  if (code) {
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+    if (!error && data.session) {
+      return data.session;
+    }
+  }
+
+  const tokenHash = searchParams.get("token_hash") ?? hashParams.get("token_hash");
+  const type = (searchParams.get("type") ?? hashParams.get("type")) as EmailOtpType | null;
+
+  if (tokenHash && type) {
+    const { data, error } = await supabase.auth.verifyOtp({
+      token_hash: tokenHash,
+      type,
+    });
+
+    if (!error && data.session) {
+      return data.session;
+    }
+  }
+
+  return null;
+};
+
 const AuthScreen = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -60,16 +78,35 @@ const AuthScreen = () => {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail || !password) {
+      setError("Email and password are required.");
+      return;
+    }
+
     setIsSubmitting(true);
     setError(null);
     setInfo(null);
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-    if (signInError) {
-      setError(signInError.message);
-    }
+    try {
+      const signInResponse = await supabase.auth.signInWithPassword({
+        email: normalizedEmail,
+        password,
+      });
 
-    setIsSubmitting(false);
+      if (signInResponse.error) {
+        setError(signInResponse.error.message || "Unable to sign in. Please try again.");
+      }
+    } catch (caughtError) {
+      if (caughtError instanceof Error) {
+        setError(caughtError.message || "Unable to sign in. Please try again.");
+      } else {
+        setError("Unable to sign in. Please try again.");
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleForgotPassword = async () => {
@@ -182,10 +219,53 @@ const PasswordSetupScreen = ({ onComplete }: { onComplete: () => void }) => {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isPreparingSession, setIsPreparingSession] = useState(true);
+
+  useEffect(() => {
+    const ensureSession = async () => {
+      try {
+        const {
+          data: { session: existingSession },
+        } = await supabase.auth.getSession();
+
+        if (existingSession) {
+          setIsPreparingSession(false);
+          return;
+        }
+
+        const resolvedSession = await resolveSessionFromAuthUrl();
+        if (!resolvedSession) {
+          setError("This reset link is invalid or expired. Use Forgot password again.");
+        }
+      } catch {
+        setError("Could not verify reset link. Please request a new one.");
+      } finally {
+        setIsPreparingSession(false);
+      }
+    };
+
+    void ensureSession();
+  }, []);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
+
+    if (isPreparingSession) {
+      return;
+    }
+
+    const {
+      data: { session: existingSession },
+    } = await supabase.auth.getSession();
+
+    if (!existingSession) {
+      const resolvedSession = await resolveSessionFromAuthUrl();
+      if (!resolvedSession) {
+        setError("Auth session missing. Please request a new password reset link.");
+        return;
+      }
+    }
 
     if (password.length < 6) {
       setError("Password must be at least 6 characters.");
@@ -250,8 +330,8 @@ const PasswordSetupScreen = ({ onComplete }: { onComplete: () => void }) => {
 
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? "Saving..." : "Save password"}
+            <Button type="submit" className="w-full" disabled={isSubmitting || isPreparingSession}>
+              {isPreparingSession ? "Preparing link..." : isSubmitting ? "Saving..." : "Save password"}
             </Button>
           </form>
         </CardContent>
@@ -274,9 +354,16 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
 
     const fetchSession = async () => {
       try {
-        const { data } = await withTimeout(supabase.auth.getSession(), 10000);
-        setSession(data.session);
-        setAuthBootstrapError(null);
+        const { data, error } = await supabase.auth.getSession();
+
+        if (error) {
+          setSession(null);
+          setAuthBootstrapError("Could not restore your session. Please log in again.");
+        } else {
+          setSession(data.session);
+          setAuthBootstrapError(null);
+        }
+
         const authType = getAuthTypeFromUrl();
         if (authType === "recovery" || authType === "invite" || hasPasswordSetupFlag()) {
           setIsPasswordSetupMode(true);

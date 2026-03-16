@@ -19,6 +19,7 @@ export interface Book {
   notes: BookNote[];
   readByCurrentUser?: boolean;
   currentlyReadingByCurrentUser?: boolean;
+  toReadByCurrentUser?: boolean;
   addedDate: string;
   description?: string;
   pageCount?: number;

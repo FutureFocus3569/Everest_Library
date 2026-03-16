@@ -11,6 +11,7 @@ import {
   BookOpen,
   Calendar,
   CheckCircle2,
+  BookMarked,
   Copy,
   Pencil,
   Layers,
@@ -47,6 +48,7 @@ const BookDetail = () => {
     toggleReadStatus,
     currentlyReadingBookId,
     toggleCurrentlyReading,
+    toggleToReadStatus,
   } = useLibrary();
   const book = books.find((b) => b.id === id);
 
@@ -173,6 +175,27 @@ const BookDetail = () => {
 
     returnBook(book.id);
     toast.success("Book marked as returned!");
+  };
+
+  const handleToggleReadStatus = async () => {
+    const result = await toggleReadStatus(book.id);
+    if (!result.ok) {
+      toast.error(result.error ?? "Saved on this device, but cloud sync failed.");
+    }
+  };
+
+  const handleToggleCurrentlyReading = async () => {
+    const result = await toggleCurrentlyReading(book.id);
+    if (!result.ok) {
+      toast.error(result.error ?? "Saved on this device, but cloud sync failed.");
+    }
+  };
+
+  const handleToggleToRead = async () => {
+    const result = await toggleToReadStatus(book.id);
+    if (!result.ok) {
+      toast.error(result.error ?? "Saved on this device, but cloud sync failed.");
+    }
   };
 
   const handleAddNote = async () => {
@@ -402,22 +425,33 @@ const BookDetail = () => {
               <h3 className="mb-3 flex items-center gap-2 font-display text-base font-semibold text-foreground">
                 <CheckCircle2 className="h-4 w-4" /> Reading Progress
               </h3>
-              <Button
-                type="button"
-                variant={book.readByCurrentUser ? "default" : "outline"}
-                onClick={() => void toggleReadStatus(book.id)}
-                className="font-body"
-              >
-                {book.readByCurrentUser ? "Mark as Unread" : "Mark as Read"}
-              </Button>
-              <Button
-                type="button"
-                variant={currentlyReadingBookId === book.id ? "default" : "outline"}
-                onClick={() => void toggleCurrentlyReading(book.id)}
-                className="ml-2 font-body"
-              >
-                {currentlyReadingBookId === book.id ? "Currently Reading" : "Set Currently Reading"}
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant={book.readByCurrentUser ? "default" : "outline"}
+                  onClick={() => void handleToggleReadStatus()}
+                  className="font-body"
+                >
+                  {book.readByCurrentUser ? "Mark as Unread" : "Mark as Read"}
+                </Button>
+                <Button
+                  type="button"
+                  variant={currentlyReadingBookId === book.id ? "default" : "outline"}
+                  onClick={() => void handleToggleCurrentlyReading()}
+                  className="font-body"
+                >
+                  Currently Reading
+                </Button>
+                <Button
+                  type="button"
+                  variant={book.toReadByCurrentUser ? "default" : "outline"}
+                  onClick={() => void handleToggleToRead()}
+                  className="gap-1.5 font-body"
+                >
+                  <BookMarked className="h-4 w-4" />
+                  {book.toReadByCurrentUser ? "In To Read" : "Add To Read"}
+                </Button>
+              </div>
             </div>
 
             {/* Loan Section */}

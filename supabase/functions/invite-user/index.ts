@@ -5,12 +5,30 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const parseJwtPayload = (token: string): { sub?: string } | null => {
+  try {
+    const [, payload] = token.split(".");
+    if (!payload) return null;
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padding = "=".repeat((4 - (normalized.length % 4)) % 4);
+    const json = atob(`${normalized}${padding}`);
+    return JSON.parse(json) as { sub?: string };
+  } catch {
+    return null;
+  }
+};
+
 const withPasswordSetupFlag = (url: string): string => {
   if (!url) return url;
   const hasQuery = url.includes("?");
   const hasFlag = /(?:\?|&)setup=password(?:&|$)/.test(url);
   if (hasFlag) return url;
   return `${url}${hasQuery ? "&" : "?"}setup=password`;
+};
+
+const normalizeRole = (role: string | undefined): "admin" | "editor" => {
+  if (role === "admin") return "admin";
+  return "editor";
 };
 
 Deno.serve(async (req) => {
@@ -48,12 +66,22 @@ Deno.serve(async (req) => {
     }
 
     const accessToken = authHeader.replace("Bearer ", "").trim();
+    const tokenPayload = parseJwtPayload(accessToken);
+    const requesterUserId = tokenPayload?.sub;
+
+    if (!requesterUserId) {
+      return new Response(JSON.stringify({ error: "Invalid auth token" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
     const {
       data: { user },
       error: userError,
-    } = await adminClient.auth.getUser(accessToken);
+    } = await adminClient.auth.admin.getUserById(requesterUserId);
 
     if (userError || !user?.id || !user?.email) {
       return new Response(JSON.stringify({ error: userError?.message ?? "Unauthorized" }), {
@@ -82,12 +110,14 @@ Deno.serve(async (req) => {
       email?: string;
       firstName?: string;
       lastName?: string;
+      desiredRole?: string;
       resend?: boolean;
       linkOnly?: boolean;
     };
     const inviteEmail = payload.email?.trim().toLowerCase();
     const firstName = payload.firstName?.trim();
     const lastName = payload.lastName?.trim();
+    const desiredRole = normalizeRole(payload.desiredRole?.trim().toLowerCase());
     const resend = Boolean(payload.resend);
     const linkOnly = Boolean(payload.linkOnly);
 
@@ -126,6 +156,26 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+
+      await adminClient
+        .from("profiles")
+        .upsert(
+          {
+            id: existingUser.id,
+            first_name: firstName ?? null,
+            last_name: lastName ?? null,
+            role: desiredRole,
+          },
+          { onConflict: "id" },
+        );
+
+      await adminClient.auth.admin.updateUserById(existingUser.id, {
+        user_metadata: {
+          first_name: firstName ?? null,
+          last_name: lastName ?? null,
+          role: desiredRole,
+        },
+      });
 
       const linkType = existingUser.email_confirmed_at ? "recovery" : "invite";
 
@@ -218,6 +268,7 @@ Deno.serve(async (req) => {
       data: {
         first_name: firstName,
         last_name: lastName,
+        role: desiredRole,
       },
     });
 

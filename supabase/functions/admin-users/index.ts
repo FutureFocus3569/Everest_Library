@@ -18,7 +18,23 @@ const parseJwtPayload = (token: string): { sub?: string } | null => {
   }
 };
 
-Deno.serve(async (req) => {
+type ProfileRow = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  role: string | null;
+};
+
+type ListedUser = {
+  id: string;
+  email: string | null;
+  email_confirmed_at: string | null;
+  last_sign_in_at: string | null;
+  created_at: string;
+  user_metadata?: Record<string, unknown> | null;
+};
+
+Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -93,7 +109,7 @@ Deno.serve(async (req) => {
   }
 
   const profilesById = new Map(
-    (profileRows ?? []).map((row) => [
+    ((profileRows ?? []) as ProfileRow[]).map((row: ProfileRow) => [
       row.id,
       {
         first_name: row.first_name,
@@ -115,12 +131,12 @@ Deno.serve(async (req) => {
     });
   }
 
-  const users = userList.users
-    .filter((listUser) => {
+  const users = (userList.users as ListedUser[])
+    .filter((listUser: ListedUser) => {
       const email = (listUser.email ?? "").trim();
       return email.includes("@");
     })
-    .map((listUser) => {
+    .map((listUser: ListedUser) => {
       const profile = profilesById.get(listUser.id);
       const metadataFirstName = (listUser.user_metadata?.first_name as string | undefined) ?? null;
       const metadataLastName = (listUser.user_metadata?.last_name as string | undefined) ?? null;
@@ -142,7 +158,9 @@ Deno.serve(async (req) => {
         created_at: listUser.created_at,
       };
     })
-    .sort((a, b) => (a.email ?? "").localeCompare(b.email ?? ""));
+    .sort((a: { email: string | null }, b: { email: string | null }) =>
+      (a.email ?? "").localeCompare(b.email ?? ""),
+    );
 
   return new Response(JSON.stringify({ users }), {
     status: 200,

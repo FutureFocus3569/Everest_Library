@@ -1,6 +1,6 @@
 # Supabase Edge Function setup
 
-This project includes `invite-user`, `admin-users`, and `delete-user` so your admin can manage access from inside the app.
+This project includes `invite-user`, `admin-users`, `delete-user`, and `save-reading-state` so your admin can manage access and users can reliably save reading progress from inside the app.
 
 ## 1) Login and link project
 
@@ -25,6 +25,7 @@ supabase secrets set \
 supabase functions deploy invite-user
 supabase functions deploy admin-users
 supabase functions deploy delete-user --no-verify-jwt
+supabase functions deploy save-reading-state
 ```
 
 After deploy, the app page `/admin/users` can send invites, view users, and delete users. Deleted users can be invited again later using the same email.

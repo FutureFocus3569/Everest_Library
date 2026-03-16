@@ -42,6 +42,8 @@ Run the SQL scripts in `supabase/` as needed in Supabase SQL Editor:
 
 - `notes-and-roles-setup.sql`
 - `user-book-reads-setup.sql`
+- `user-reading-state-setup.sql`
+- `user-to-read-setup.sql`
 - `books-tags-setup.sql`
 - `admin-role-rpc.sql`
 

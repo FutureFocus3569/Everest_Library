@@ -24,23 +24,16 @@ export const StatsBar = () => {
         return;
       }
 
-      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-users`;
-      const response = await fetch(functionUrl, {
+      const { data, error } = await supabase.functions.invoke<{ users?: Array<unknown> }>("admin-users", {
         method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
-          Authorization: `Bearer ${session.access_token}`,
-        },
       });
 
-      if (!response.ok) {
+      if (error) {
         if (!cancelled) setUserCount(1);
         return;
       }
 
-      const payload = (await response.json().catch(() => null)) as { users?: Array<unknown> } | null;
-      const count = payload?.users?.length ?? 1;
+      const count = data?.users?.length ?? 1;
       if (!cancelled) {
         setUserCount(count);
       }

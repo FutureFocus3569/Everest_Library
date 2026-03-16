@@ -1,6 +1,6 @@
 import { Book } from "@/types/book";
 import { Link } from "react-router-dom";
-import { BookOpen, Users, Copy } from "lucide-react";
+import { BookOpen, Users, Copy, BookMarked } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { motion } from "framer-motion";
 
@@ -67,6 +67,15 @@ export const BookCard = ({ book, index }: BookCardProps) => {
             <div className="absolute right-2 bottom-2">
               <Badge className="border-0 bg-accent text-accent-foreground text-xs font-body">
                 Currently Reading
+              </Badge>
+            </div>
+          )}
+
+          {book.toReadByCurrentUser && !book.currentlyReadingByCurrentUser && (
+            <div className="absolute right-2 bottom-2">
+              <Badge className="border-0 bg-secondary text-secondary-foreground gap-1 text-xs font-body">
+                <BookMarked className="h-3 w-3" />
+                To Read
               </Badge>
             </div>
           )}

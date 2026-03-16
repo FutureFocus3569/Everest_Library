@@ -25,9 +25,10 @@ type AccessUser = {
 };
 
 const AdminUsers = () => {
-  const { readCount } = useLibrary();
+  const { books, readCount, currentlyReadingBookId } = useLibrary();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentEmail, setCurrentEmail] = useState<string | null>(null);
+  const [currentRole, setCurrentRole] = useState<string>("editor");
   const [profileFirstName, setProfileFirstName] = useState("");
   const [profileLastName, setProfileLastName] = useState("");
   const [profileAvatarUrl, setProfileAvatarUrl] = useState("");
@@ -35,6 +36,7 @@ const AdminUsers = () => {
   const [inviteEmail, setInviteEmail] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [inviteAccessRole, setInviteAccessRole] = useState<"admin" | "editor">("editor");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [isGeneratingLink, setIsGeneratingLink] = useState(false);
@@ -52,13 +54,23 @@ const AdminUsers = () => {
   useEffect(() => {
     const loadUser = async () => {
       const {
-        data: { user },
-      } = await supabase.auth.getUser();
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      let user = session?.user ?? null;
+
+      if (!user) {
+        const {
+          data: { user: fetchedUser },
+        } = await supabase.auth.getUser();
+        user = fetchedUser ?? null;
+      }
 
       setCurrentUserId(user?.id ?? null);
       setCurrentEmail(user?.email?.toLowerCase() ?? null);
 
       if (!user) {
+        setCurrentRole("editor");
         setProfileFirstName("");
         setProfileLastName("");
         setProfileAvatarUrl("");
@@ -78,14 +90,14 @@ const AdminUsers = () => {
 
       let { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("first_name, last_name, avatar_url")
+        .select("first_name, last_name, avatar_url, role")
         .eq("id", user.id)
         .single();
 
       if (profileError && /avatar_url/i.test(profileError.message)) {
         const fallbackProfile = await supabase
           .from("profiles")
-          .select("first_name, last_name")
+          .select("first_name, last_name, role")
           .eq("id", user.id)
           .single();
 
@@ -99,67 +111,71 @@ const AdminUsers = () => {
       }
 
       if (!profileError && profile) {
+        setCurrentRole(profile.role ?? "editor");
         setProfileFirstName(profile.first_name ?? metadataFirstName);
         setProfileLastName(profile.last_name ?? metadataLastName);
         setProfileAvatarUrl(profile.avatar_url ?? metadataAvatarUrl);
+      } else {
+        setCurrentRole("editor");
       }
     };
 
-    loadUser();
+    void loadUser();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(() => {
+      void loadUser();
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
-  const isAdmin = Boolean(adminEmail) && currentEmail === adminEmail;
+  const isAdmin = (Boolean(adminEmail) && currentEmail === adminEmail) || currentRole === "admin";
+  const currentlyReadingCount = currentlyReadingBookId ? 1 : 0;
+  const toReadCount = books.filter((book) => Boolean(book.toReadByCurrentUser)).length;
 
   const loadAccessUsers = async () => {
     setIsLoadingAccess(true);
     setAccessError(null);
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    if (!session?.access_token) {
-      setAccessError("Your session expired. Please sign out and log in again.");
-      setIsLoadingAccess(false);
-      return;
-    }
-
-    const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-users`;
-    const response = await fetch(functionUrl, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
-        Authorization: `Bearer ${session.access_token}`,
-      },
-    });
-
-    if (!response.ok) {
-      const rawText = await response.text().catch(() => "");
-      let detailedError = `Could not load users (${response.status})`;
-      if (rawText) {
-        try {
-          const payload = JSON.parse(rawText) as { error?: string };
-          if (payload?.error) detailedError = payload.error;
-        } catch {
-          detailedError = `${detailedError}: ${rawText}`;
-        }
+      if (!session?.access_token) {
+        setAccessError("Your session expired. Please sign out and log in again.");
+        return;
       }
-      setAccessError(detailedError);
-      setIsLoadingAccess(false);
-      return;
-    }
 
-    const payload = (await response.json()) as { users?: AccessUser[] };
-    const users = payload.users ?? [];
-    setAccessUsers(users);
-    setRoleDraftByUserId(
-      users.reduce<Record<string, string>>((acc, user) => {
-        acc[user.id] = user.role;
-        return acc;
-      }, {}),
-    );
-    setIsLoadingAccess(false);
+      const { data, error: invokeError } = await supabase.functions.invoke<{ users?: AccessUser[] }>(
+        "admin-users",
+        {
+          method: "GET",
+        },
+      );
+
+      if (invokeError) {
+        setAccessError(invokeError.message || "Could not load users.");
+        return;
+      }
+
+      const users = data?.users ?? [];
+      setAccessUsers(users);
+      setRoleDraftByUserId(
+        users.reduce<Record<string, string>>((acc, user) => {
+          acc[user.id] = user.role;
+          return acc;
+        }, {}),
+      );
+    } catch (caughtError) {
+      setAccessError(caughtError instanceof Error ? caughtError.message : "Could not load users.");
+    } finally {
+      setIsLoadingAccess(false);
+    }
   };
 
   useEffect(() => {
@@ -271,71 +287,50 @@ const AdminUsers = () => {
     setError(null);
     setManualInviteLink(null);
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    if (!session?.access_token) {
-      setError("Your session expired. Please sign out and log in again.");
-      setIsSubmitting(false);
-      setIsResending(false);
-      setIsGeneratingLink(false);
-      return;
-    }
-
-    const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-user`;
-
-    const response = await fetch(functionUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
-        Authorization: `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({
-        email: inviteEmail.trim().toLowerCase(),
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        resend,
-        linkOnly,
-      }),
-    });
-
-    if (!response.ok) {
-      const rawText = await response.text().catch(() => "");
-      let detailedError = `Invite failed (${response.status}${response.statusText ? ` ${response.statusText}` : ""})`;
-
-      if (rawText) {
-        try {
-          const payload = JSON.parse(rawText) as { error?: string };
-          if (payload?.error) {
-            detailedError = payload.error;
-          }
-        } catch {
-          detailedError = `${detailedError}: ${rawText}`;
-        }
+      if (!session?.access_token) {
+        setError("Your session expired. Please sign out and log in again.");
+        return;
       }
 
-      setError(detailedError);
+      const { data: payload, error: invokeError } = await supabase.functions.invoke<{
+        message?: string;
+        actionLink?: string;
+      }>("invite-user", {
+        body: {
+          email: inviteEmail.trim().toLowerCase(),
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          desiredRole: inviteAccessRole,
+          resend,
+          linkOnly,
+        },
+      });
+
+      if (invokeError) {
+        setError(invokeError.message || "Invite failed.");
+        return;
+      }
+
+      setMessage(payload?.message ?? `Invite sent to ${inviteEmail.trim().toLowerCase()}.`);
+      setManualInviteLink(payload?.actionLink ?? null);
+      setInviteEmail("");
+      if (!resend) {
+        setFirstName("");
+        setLastName("");
+        setInviteAccessRole("editor");
+      }
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Invite failed.");
+    } finally {
       setIsSubmitting(false);
       setIsResending(false);
       setIsGeneratingLink(false);
-      return;
     }
-
-    const payload = (await response.json().catch(() => null)) as
-      | { message?: string; actionLink?: string }
-      | null;
-    setMessage(payload?.message ?? `Invite sent to ${inviteEmail.trim().toLowerCase()}.`);
-    setManualInviteLink(payload?.actionLink ?? null);
-    setInviteEmail("");
-    if (!resend) {
-      setFirstName("");
-      setLastName("");
-    }
-    setIsSubmitting(false);
-    setIsResending(false);
-    setIsGeneratingLink(false);
   };
 
   const handleInvite = async (event: FormEvent<HTMLFormElement>) => {
@@ -406,37 +401,18 @@ const AdminUsers = () => {
         return;
       }
 
-      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-user`;
-      const response = await fetch(functionUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
-          Authorization: `Bearer ${session.access_token}`,
+      const { data: payload, error: invokeError } = await supabase.functions.invoke<{ message?: string }>(
+        "delete-user",
+        {
+          body: { userId: user.id, email: user.email },
         },
-        body: JSON.stringify({ userId: user.id, email: user.email }),
-      });
+      );
 
-      if (!response.ok) {
-        const rawText = await response.text().catch(() => "");
-        let detailedError = `Delete failed (${response.status}${response.statusText ? ` ${response.statusText}` : ""})`;
-
-        if (rawText) {
-          try {
-            const payload = JSON.parse(rawText) as { error?: string };
-            if (payload?.error) {
-              detailedError = payload.error;
-            }
-          } catch {
-            detailedError = `${detailedError}: ${rawText}`;
-          }
-        }
-
-        setError(detailedError);
+      if (invokeError) {
+        setError(invokeError.message || "Delete failed.");
         return;
       }
 
-      const payload = (await response.json().catch(() => null)) as { message?: string } | null;
       setMessage(payload?.message ?? "User deleted. You can invite them again later.");
       setAccessUsers((prev) => prev.filter((accessUser) => accessUser.id !== user.id));
       setRoleDraftByUserId((prev) => {
@@ -463,6 +439,11 @@ const AdminUsers = () => {
               ? "Invite a new user to access Everest Library."
               : "Manage your profile details and reading progress."}
           </p>
+          {import.meta.env.DEV ? (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Signed in as: {currentEmail ?? "(not signed in)"} · Admin check: {isAdmin ? "true" : "false"} · Expected admin email: {adminEmail || "(not set)"}
+            </p>
+          ) : null}
         </div>
 
         <Card>
@@ -531,6 +512,12 @@ const AdminUsers = () => {
               <p className="text-sm text-muted-foreground">
                 Books read: <span className="font-semibold text-foreground">{readCount}</span>
               </p>
+              <p className="text-sm text-muted-foreground">
+                Currently reading: <span className="font-semibold text-foreground">{currentlyReadingCount}</span>
+              </p>
+              <p className="text-sm text-muted-foreground">
+                To read: <span className="font-semibold text-foreground">{toReadCount}</span>
+              </p>
             </form>
           </CardContent>
         </Card>
@@ -575,6 +562,22 @@ const AdminUsers = () => {
                     required
                   />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="invite-role">Access level</Label>
+                <Select
+                  value={inviteAccessRole}
+                  onValueChange={(value: "admin" | "editor") => setInviteAccessRole(value)}
+                >
+                  <SelectTrigger id="invite-role" className="w-full sm:w-[220px]">
+                    <SelectValue placeholder="Select access" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="editor">User access</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               {error ? <p className="text-sm text-destructive">{error}</p> : null}

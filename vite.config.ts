@@ -27,6 +27,18 @@ export default defineConfig(({ mode }) => {
         : undefined,
     },
     plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            react: ["react", "react-dom", "react-router-dom"],
+            supabase: ["@supabase/supabase-js"],
+            ui: ["framer-motion", "lucide-react", "recharts"],
+            scanner: ["@zxing/browser"],
+          },
+        },
+      },
+    },
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),

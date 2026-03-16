@@ -1,6 +1,6 @@
 import { ChangeEvent, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BrowserMultiFormatReader, type IScannerControls } from "@zxing/browser";
+import type { IScannerControls } from "@zxing/browser";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useLibrary } from "@/context/LibraryContext";
 import { Button } from "@/components/ui/button";
@@ -135,7 +135,7 @@ const AddBook = () => {
   const { addBook, canManageBooks } = useLibrary();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const scannerControlsRef = useRef<IScannerControls | null>(null);
-  const scannerReaderRef = useRef<BrowserMultiFormatReader | null>(null);
+  const scannerReaderRef = useRef<{ reset: () => void } | null>(null);
   const scannerHandledRef = useRef(false);
 
   const [isbn, setIsbn] = useState("");
@@ -195,10 +195,12 @@ const AddBook = () => {
 
       setScannerError(null);
       setScannerLoading(true);
-      const reader = new BrowserMultiFormatReader();
-      scannerReaderRef.current = reader;
 
       try {
+        const zxingModule = await import("@zxing/browser");
+        const reader = new zxingModule.BrowserMultiFormatReader();
+        scannerReaderRef.current = reader;
+
         const mediaStream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: { ideal: "environment" } },
           audio: false,
@@ -206,7 +208,7 @@ const AddBook = () => {
 
         mediaStream.getTracks().forEach((track) => track.stop());
 
-        const devices = await BrowserMultiFormatReader.listVideoInputDevices();
+        const devices = await zxingModule.BrowserMultiFormatReader.listVideoInputDevices();
         const preferredDevice =
           devices.find((device) => /back|rear|environment/i.test(device.label)) ?? devices[0];
 

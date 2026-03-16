@@ -4,8 +4,9 @@ import { Home, Plus, Search, Menu, X, Mountain, LogOut, Users } from "lucide-rea
 import { cn } from "@/lib/utils";
 import { useLibrary } from "@/context/LibraryContext";
 import { motion, AnimatePresence } from "framer-motion";
-import { supabase } from "@/lib/supabase";
+import { clearSupabaseAuthStorage, supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 export const AppLayout = ({ children }: { children: ReactNode }) => {
   const location = useLocation();
@@ -54,8 +55,46 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
 
   const handleSignOut = async () => {
     setIsSigningOut(true);
-    await supabase.auth.signOut();
-    setIsSigningOut(false);
+
+    try {
+      let localErrorMessage: string | null = null;
+
+      try {
+        const { error: localError } = await supabase.auth.signOut({ scope: "local" });
+        if (localError) {
+          localErrorMessage = localError.message ?? "Could not sign out using API.";
+        }
+      } catch (caughtError) {
+        localErrorMessage =
+          caughtError instanceof Error ? caughtError.message : "Could not sign out using API.";
+      }
+
+      clearSupabaseAuthStorage();
+      setCurrentEmail(null);
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (session) {
+        clearSupabaseAuthStorage();
+      }
+
+      if (localErrorMessage) {
+        toast.success("Signed out on this device.");
+      } else {
+        toast.success("Signed out.");
+      }
+
+      window.location.replace("/");
+    } catch (caughtError) {
+      clearSupabaseAuthStorage();
+      setCurrentEmail(null);
+      toast.success("Signed out on this device.");
+      window.location.replace("/");
+    } finally {
+      setIsSigningOut(false);
+    }
   };
 
   return (
