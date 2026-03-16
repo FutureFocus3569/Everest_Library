@@ -32,25 +32,63 @@ const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, timeoutMe
   }
 };
 
+const normalizeText = (value: string) => value.toLowerCase().replace(/[^a-z0-9\s-]/g, " ").trim();
+
+const tagSynonyms: Array<{ tag: string; patterns: RegExp[] }> = [
+  { tag: "Self-Help", patterns: [/\bself[\s-]?help\b/, /\bself[\s-]?improvement\b/] },
+  { tag: "Personal Development", patterns: [/\bpersonal development\b/, /\bpersonal growth\b/] },
+  { tag: "Psychology", patterns: [/\bpsycholog/, /\bmental health\b/, /\bbehavior\b/, /\bbehaviour\b/] },
+  { tag: "Business", patterns: [/\bbusiness\b/, /\bmanagement\b/, /\beconomics?\b/] },
+  { tag: "Entrepreneurship", patterns: [/\bentrepreneur/, /\bstartup\b/, /\bfounder\b/] },
+  { tag: "Innovation", patterns: [/\binnovation\b/, /\bcreative thinking\b/, /\binvent\w*\b/] },
+  { tag: "Leadership", patterns: [/\bleadership\b/, /\bleader\w*\b/] },
+  { tag: "Productivity", patterns: [/\bproductivity\b/, /\btime management\b/, /\befficiency\b/] },
+  { tag: "Mindset", patterns: [/\bmindset\b/, /\bgrowth mindset\b/] },
+  { tag: "Finance", patterns: [/\bfinance\b/, /\binvesting\b/, /\bmoney\b/, /\bwealth\b/] },
+  { tag: "Biography", patterns: [/\bbiograph/] },
+  { tag: "Memoir", patterns: [/\bmemoir\b/, /\bautobiograph/] },
+  { tag: "History", patterns: [/\bhistory\b/, /\bhistorical\b/] },
+  { tag: "Science", patterns: [/\bscience\b/, /\bphysics\b/, /\bchemistry\b/, /\bbiology\b/] },
+  { tag: "Technology", patterns: [/\btechnology\b/, /\btech\b/, /\bcomputing\b/, /\bsoftware\b/] },
+  { tag: "Philosophy", patterns: [/\bphilosophy\b/, /\bethics\b/, /\bstoic/] },
+  { tag: "Health", patterns: [/\bhealth\b/, /\bwellness\b/, /\bnutrition\b/, /\bfitness\b/] },
+  { tag: "Parenting", patterns: [/\bparenting\b/, /\bparent\w*\b/, /\bchild\w*\b/] },
+  { tag: "Education", patterns: [/\beducation\b/, /\blearning\b/, /\bstudy\b/, /\bteaching\b/] },
+  { tag: "Workbook", patterns: [/\bworkbook\b/, /\bwork book\b/, /\bstudy guide\b/, /\bpractice\b/] },
+  { tag: "Fiction", patterns: [/\bfiction\b/, /\bnovel\b/] },
+];
+
 const pickTagsFromSubjects = (subjects: string[]): string[] => {
-  const subjectText = subjects.join(" ").toLowerCase();
+  const normalizedSubjects = subjects.map(normalizeText).filter(Boolean);
+  const subjectText = normalizedSubjects.join(" ");
   const matchedTags: string[] = [];
 
-  if (/self-help|self help/.test(subjectText)) matchedTags.push("Self-Help");
-  if (/personal development|self improvement|mindset/.test(subjectText)) matchedTags.push("Personal Development");
-  if (/psychology|mental health|behavior/.test(subjectText)) matchedTags.push("Psychology");
-  if (/business|management|economics/.test(subjectText)) matchedTags.push("Business");
-  if (/entrepreneur|startup|founder/.test(subjectText)) matchedTags.push("Entrepreneurship");
-  if (/innovation|invent|creative thinking/.test(subjectText)) matchedTags.push("Innovation");
-  if (/leadership|leader/.test(subjectText)) matchedTags.push("Leadership");
-  if (/memoir|biography/.test(subjectText)) matchedTags.push("Biography");
-  if (/history|historical/.test(subjectText)) matchedTags.push("History");
-  if (/science|physics|chemistry|biology/.test(subjectText)) matchedTags.push("Science");
-  if (/technology|tech|computing/.test(subjectText)) matchedTags.push("Technology");
-  if (/workbook|work book|study guide|practice/.test(subjectText)) matchedTags.push("Workbook");
-  if (/fiction|novel/.test(subjectText)) matchedTags.push("Fiction");
+  for (const defaultTag of defaultBookTags) {
+    const normalizedTag = normalizeText(defaultTag);
+    if (normalizedTag && normalizedSubjects.some((subject) => subject.includes(normalizedTag))) {
+      matchedTags.push(defaultTag);
+    }
+  }
+
+  for (const synonym of tagSynonyms) {
+    if (synonym.patterns.some((pattern) => pattern.test(subjectText))) {
+      matchedTags.push(synonym.tag);
+    }
+  }
 
   return uniqueTags(matchedTags);
+};
+
+const buildFallbackDescription = (title: string, author: string, subjects: string[]): string => {
+  const cleanedSubjects = uniqueTags(subjects.map((subject) => subject.trim()).filter(Boolean)).slice(0, 4);
+  const titlePart = title.trim() ? `"${title.trim()}"` : "This book";
+  const authorPart = author.trim() ? ` by ${author.trim()}` : "";
+
+  if (cleanedSubjects.length === 0) {
+    return `${titlePart}${authorPart} is available in your library. Add notes or tags to capture what it's about.`;
+  }
+
+  return `${titlePart}${authorPart} explores themes of ${cleanedSubjects.join(", ")}.`;
 };
 
 const extractDescription = (bookData: Record<string, unknown>): string => {
@@ -233,6 +271,7 @@ const AddBook = () => {
               stopScannerSafely();
 
               setIsbn(scannedValue);
+              void lookupISBN(scannedValue);
               toast.success(`Barcode scanned: ${scannedValue}`);
               setScannerOpen(false);
             } catch {
@@ -278,11 +317,12 @@ const AddBook = () => {
     };
   }, [scannerOpen]);
 
-  const lookupISBN = async () => {
-    if (!isbn.trim()) return;
+  const lookupISBN = async (rawIsbn?: string) => {
+    const isbnValue = (rawIsbn ?? isbn).trim();
+    if (!isbnValue) return;
     setLookupLoading(true);
     try {
-      const cleanIsbn = isbn.trim();
+      const cleanIsbn = isbnValue;
       const res = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${cleanIsbn}&format=json&jscmd=data`);
       const data = await res.json();
       const bookData = data[`ISBN:${cleanIsbn}`];
@@ -332,9 +372,15 @@ const AddBook = () => {
           }
         }
 
-        if (nextDescription) {
-          setDescription(nextDescription);
+        if (!nextDescription) {
+          nextDescription = buildFallbackDescription(
+            bookData.title || "",
+            bookData.authors?.[0]?.name || "",
+            subjectNames,
+          );
         }
+
+        setDescription(nextDescription);
         if (nextCoverUrl) {
           setCoverUrl(nextCoverUrl);
         }
@@ -346,7 +392,11 @@ const AddBook = () => {
         if (googleFallback.title || googleFallback.author || googleFallback.description || googleFallback.coverUrl) {
           if (googleFallback.title) setTitle(googleFallback.title);
           if (googleFallback.author) setAuthor(googleFallback.author);
-          if (googleFallback.description) setDescription(googleFallback.description);
+          if (googleFallback.description) {
+            setDescription(googleFallback.description);
+          } else {
+            setDescription(buildFallbackDescription(googleFallback.title, googleFallback.author, googleFallback.tags));
+          }
           if (googleFallback.coverUrl) setCoverUrl(googleFallback.coverUrl);
           if (googleFallback.tags.length > 0) {
             setSelectedTags((prev) => uniqueTags([...prev, ...googleFallback.tags]));
