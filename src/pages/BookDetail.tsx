@@ -61,7 +61,7 @@ const BookDetail = () => {
   const [editTitle, setEditTitle] = useState("");
   const [editAuthor, setEditAuthor] = useState("");
   const [editIsbn, setEditIsbn] = useState("");
-  const [editCopies, setEditCopies] = useState(1);
+  const [editCopies, setEditCopies] = useState("1");
   const [editCoverUrl, setEditCoverUrl] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editTags, setEditTags] = useState<string[]>([]);
@@ -71,7 +71,7 @@ const BookDetail = () => {
     setEditTitle(book.title);
     setEditAuthor(book.author);
     setEditIsbn(book.isbn ?? "");
-    setEditCopies(book.copies ?? 1);
+    setEditCopies(String(book.copies ?? 1));
     setEditCoverUrl(book.coverUrl ?? "");
     setEditDescription(book.description ?? "");
     setEditTags(uniqueTags(book.tags ?? []));
@@ -296,6 +296,7 @@ const BookDetail = () => {
     setIsSavingEdit(true);
 
     const normalizedTags = uniqueTags(editTags);
+    const normalizedCopies = Math.max(1, Number.parseInt(editCopies, 10) || 1);
 
     let { data, error } = await supabase
       .from("books")
@@ -303,7 +304,7 @@ const BookDetail = () => {
         title: editTitle.trim(),
         author: editAuthor.trim(),
         isbn: editIsbn.trim() || null,
-        copies: Math.max(1, editCopies),
+        copies: normalizedCopies,
         cover_url: editCoverUrl.trim() || null,
         description: editDescription.trim() || null,
         category: "Uncategorized",
@@ -320,7 +321,7 @@ const BookDetail = () => {
           title: editTitle.trim(),
           author: editAuthor.trim(),
           isbn: editIsbn.trim() || null,
-          copies: Math.max(1, editCopies),
+          copies: normalizedCopies,
           cover_url: editCoverUrl.trim() || null,
           description: editDescription.trim() || null,
           category: "Uncategorized",
@@ -599,7 +600,7 @@ const BookDetail = () => {
                         type="number"
                         min={1}
                         value={editCopies}
-                        onChange={(e) => setEditCopies(parseInt(e.target.value, 10) || 1)}
+                        onChange={(e) => setEditCopies(e.target.value)}
                         className="mt-1 font-body"
                       />
                     </div>

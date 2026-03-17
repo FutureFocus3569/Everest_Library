@@ -179,7 +179,7 @@ const AddBook = () => {
   const [isbn, setIsbn] = useState("");
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
-  const [copies, setCopies] = useState(1);
+  const [copies, setCopies] = useState("1");
   const [description, setDescription] = useState("");
   const [coverUrl, setCoverUrl] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -467,6 +467,7 @@ const AddBook = () => {
     }
 
     const normalizedTags = uniqueTags(selectedTags);
+    const normalizedCopies = Math.max(1, Number.parseInt(copies, 10) || 1);
 
     const bookPayload = {
       user_id: user.id,
@@ -475,7 +476,7 @@ const AddBook = () => {
       isbn: isbn.trim() || null,
       category: "Uncategorized",
       tags: normalizedTags,
-      copies,
+      copies: normalizedCopies,
       description: description.trim() || null,
       cover_url: coverUrl.trim() || null,
     };
@@ -527,7 +528,7 @@ const AddBook = () => {
               author: author.trim(),
               isbn: isbn.trim() || null,
               category: "Uncategorized",
-              copies,
+              copies: normalizedCopies,
               description: description.trim() || null,
               cover_url: coverUrl.trim() || null,
             })
@@ -661,7 +662,7 @@ const AddBook = () => {
                   type="number"
                   min={1}
                   value={copies}
-                  onChange={(e) => setCopies(parseInt(e.target.value) || 1)}
+                  onChange={(e) => setCopies(e.target.value)}
                   className="mt-1 font-body"
                 />
               </div>
