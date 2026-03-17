@@ -93,6 +93,15 @@ export const LibraryProvider = ({ children }: { children: ReactNode }) => {
     };
 
     const loadBooksForCurrentUser = async () => {
+      // Instantly show previously cached books while fresh data loads in background
+      try {
+        const cached = localStorage.getItem("everest_books_cache_v1");
+        if (cached) {
+          const parsed = JSON.parse(cached) as Book[];
+          if (Array.isArray(parsed) && parsed.length > 0) setBooks(parsed);
+        }
+      } catch {}
+
       const { session, user } = await resolveUserWithRetry();
       let activeSession = session;
       let activeUser = user;
@@ -123,6 +132,130 @@ export const LibraryProvider = ({ children }: { children: ReactNode }) => {
 
       setCurrentUserId(activeUser?.id ?? null);
       let effectiveCurrentlyReadingBookId: string | null = null;
+
+      // ── PRODUCTION FAST PATH ──────────────────────────────────────────────────
+      // In production (on device), useDevProxy is false. Run all queries in
+      // parallel with Promise.all so a single round-trip covers every table.
+      if (!useDevProxy) {
+        const userId = activeUser?.id ?? null;
+        const selectCols =
+          "id, title, author, isbn, category, tags, copies, description, cover_url, loaned_to, loan_date, added_date";
+        const selectColsNoTags =
+          "id, title, author, isbn, category, copies, description, cover_url, loaned_to, loan_date, added_date";
+        const noUser = Promise.resolve({ data: null, error: null } as { data: null; error: null });
+        const noRows = Promise.resolve(
+          { data: null, error: null } as { data: null; error: null },
+        );
+
+        const [
+          currentlyReadingRes,
+          profileRes,
+          booksRes,
+          notesRes,
+          readsRes,
+          toReadRes,
+        ] = await Promise.all([
+          userId
+            ? supabase.from("user_currently_reading").select("book_id").eq("user_id", userId).maybeSingle()
+            : noUser,
+          userId
+            ? supabase.from("profiles").select("role").eq("id", userId).single()
+            : noUser,
+          supabase.from("books").select(selectCols).order("created_at", { ascending: false }),
+          supabase
+            .from("book_notes")
+            .select("id, book_id, content, author_name, created_at")
+            .order("created_at", { ascending: false }),
+          userId
+            ? supabase.from("user_book_reads").select("book_id").eq("user_id", userId)
+            : noRows,
+          userId
+            ? supabase.from("user_to_read").select("book_id").eq("user_id", userId)
+            : noRows,
+        ]);
+
+        const prodCRId =
+          typeof (currentlyReadingRes.data as { book_id?: string | null } | null)?.book_id === "string"
+            ? (currentlyReadingRes.data as { book_id: string }).book_id
+            : null;
+        setCurrentlyReadingBookId(prodCRId);
+        setCurrentRole(
+          (profileRes.data as { role?: string } | null)?.role === "viewer" ? "viewer" : "editor",
+        );
+
+        let prodData = booksRes.data as Array<Record<string, unknown>> | null;
+        if (booksRes.error && /tags/i.test(booksRes.error.message ?? "")) {
+          const fb = await supabase
+            .from("books")
+            .select(selectColsNoTags)
+            .order("created_at", { ascending: false });
+          prodData = fb.data as Array<Record<string, unknown>> | null;
+        }
+        if (!prodData) return;
+
+        const prodNotes: Record<string, Book["notes"]> = {};
+        if (!notesRes.error && notesRes.data) {
+          (notesRes.data as Array<Record<string, unknown>>).forEach((noteRow) => {
+            const bookId = noteRow.book_id as string | undefined;
+            if (!bookId) return;
+            if (!prodNotes[bookId]) prodNotes[bookId] = [];
+            prodNotes[bookId]!.push({
+              id: noteRow.id as string,
+              content: noteRow.content as string,
+              authorName: noteRow.author_name as string,
+              createdAt:
+                typeof noteRow.created_at === "string"
+                  ? noteRow.created_at.split("T")[0]
+                  : new Date().toISOString().split("T")[0],
+            });
+          });
+        }
+
+        const prodReadIds = new Set<string>();
+        if (!readsRes.error && readsRes.data) {
+          (readsRes.data as Array<{ book_id: string }>).forEach(
+            (r) => typeof r.book_id === "string" && prodReadIds.add(r.book_id),
+          );
+        }
+
+        const prodToReadIds = new Set<string>();
+        if (!toReadRes.error && toReadRes.data) {
+          (toReadRes.data as Array<{ book_id: string }>).forEach(
+            (r) => typeof r.book_id === "string" && prodToReadIds.add(r.book_id),
+          );
+        }
+
+        const prodMapped: Book[] = prodData.map((row) => {
+          const isCR = prodCRId === row.id;
+          const isRead = prodReadIds.has(row.id as string) && !isCR;
+          const isToRead = prodToReadIds.has(row.id as string) && !isCR && !isRead;
+          return {
+            id: row.id,
+            title: row.title,
+            author: row.author,
+            isbn: row.isbn ?? "",
+            coverUrl: row.cover_url ?? undefined,
+            category: row.category ?? "Uncategorized",
+            tags: uniqueTags(Array.isArray(row.tags) ? (row.tags as string[]) : []),
+            copies: row.copies ?? 1,
+            loanedTo: row.loaned_to ?? undefined,
+            loanDate: row.loan_date ?? undefined,
+            notes: prodNotes[row.id as string] ?? [],
+            readByCurrentUser: isRead,
+            currentlyReadingByCurrentUser: isCR,
+            toReadByCurrentUser: isToRead,
+            addedDate: row.added_date ?? new Date().toISOString().split("T")[0],
+            description: row.description ?? undefined,
+          } as Book;
+        });
+
+        setBooks(prodMapped);
+        try {
+          localStorage.setItem("everest_books_cache_v1", JSON.stringify(prodMapped));
+        } catch {}
+        return;
+      }
+      // ── END PRODUCTION FAST PATH ─────────────────────────────────────────────
 
       const fetchTableFromLocalProxy = async <T,>(path: string): Promise<T | null> => {
         if (!useDevProxy || !accessToken) {
@@ -439,6 +572,9 @@ export const LibraryProvider = ({ children }: { children: ReactNode }) => {
       });
 
       setBooks(mappedBooks);
+      try {
+        localStorage.setItem("everest_books_cache_v1", JSON.stringify(mappedBooks));
+      } catch {}
     };
 
     loadBooksForCurrentUser();
